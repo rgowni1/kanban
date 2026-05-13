@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kanban</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --panel: #ffffff;
+    --panel-2: #f5f5f4;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --accent: #0f766e;
+    --accent-soft: #ccfbf1;
+    --danger: #b91c1c;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09;
+      --panel: #1c1917;
+      --panel-2: #292524;
+      --border: #44403c;
+      --text: #fafaf9;
+      --muted: #a8a29e;
+      --accent: #2dd4bf;
+      --accent-soft: #134e4a;
+      --danger: #f87171;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  header .actions { display: flex; gap: 8px; }
+  button {
+    font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--panel-2); }
+  button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  button.ghost:hover { color: var(--text); background: var(--panel-2); }
+  main {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(240px, 1fr));
+    gap: 12px;
+    padding: 16px 24px 24px;
+    height: calc(100vh - 57px);
+    overflow-x: auto;
+  }
+  .col {
+    display: flex; flex-direction: column;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    min-height: 0;
+  }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .col-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--muted); }
+  .col[data-status="inbox"]       .dot { background: #a8a29e; }
+  .col[data-status="not-started"] .dot { background: #94a3b8; }
+  .col[data-status="in-progress"] .dot { background: #3b82f6; }
+  .col[data-status="focus"]       .dot { background: #ec4899; }
+  .col[data-status="done"]        .dot { background: var(--accent); }
+  .col.over-cap .col-head { background: #fee2e2; }
+  @media (prefers-color-scheme: dark) {
+    .col.over-cap .col-head { background: #450a0a; }
+  }
+  .count { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .cards {
+    flex: 1; overflow-y: auto; padding: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .cards.drag-over { background: var(--accent-soft); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: var(--shadow);
+    cursor: grab;
+    position: relative;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.4; }
+  .card.focused {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .card .title {
+    outline: none; min-height: 1.4em; word-break: break-word;
+  }
+  .card .title[contenteditable="true"]:focus {
+    background: var(--accent-soft); border-radius: 4px;
+  }
+  .card .meta {
+    margin-top: 6px; font-size: 11px; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .col[data-status="done"] .card .title { text-decoration: line-through; color: var(--muted); }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .badge {
+    font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 4px;
+    border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+  }
+  .badge.context-Personal { background: #dbeafe; color: #1e3a8a; border-color: transparent; }
+  .badge.context-Work     { background: #ede9fe; color: #5b21b6; border-color: transparent; }
+  @media (prefers-color-scheme: dark) {
+    .badge.context-Personal { background: #1e3a8a; color: #dbeafe; }
+    .badge.context-Work     { background: #4c1d95; color: #ede9fe; }
+  }
+  .badge.staleness { background: var(--panel-2); }
+  .filter-bar {
+    display: flex; gap: 4px; align-items: center;
+    font-size: 12px; color: var(--muted);
+  }
+  .filter-bar button {
+    font-size: 12px; padding: 4px 8px;
+  }
+  .filter-bar button.active {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--text);
+  }
+  .card .del {
+    position: absolute; top: 6px; right: 6px;
+    border: none; background: transparent; color: var(--muted);
+    font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 4px;
+    opacity: 0; cursor: pointer;
+  }
+  .card:hover .del { opacity: 1; }
+  .card .del:hover { color: var(--danger); background: var(--panel-2); }
+  .add {
+    border: 1px dashed var(--border);
+    background: transparent; color: var(--muted);
+    padding: 8px; margin: 8px 10px 10px; border-radius: 8px;
+    text-align: left; font-size: 13px;
+  }
+  .add:hover { color: var(--text); border-color: var(--accent); }
+  .new-input {
+    margin: 8px 10px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .new-input textarea {
+    font: inherit; color: var(--text);
+    background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 8px 10px; resize: vertical; min-height: 60px;
+    outline: none;
+  }
+  .new-input .row { display: flex; gap: 6px; justify-content: flex-end; }
+  .empty {
+    text-align: center; color: var(--muted); font-size: 12px;
+    padding: 20px 8px; font-style: italic;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Kanban</h1>
+    <div class="actions">
+      <div class="filter-bar" id="context-filter">
+        <button data-context="all" class="active">All</button>
+        <button data-context="Personal">Personal</button>
+        <button data-context="Work">Work</button>
+      </div>
+      <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
+      <button class="ghost" id="clear-done" title="Remove all completed tasks">Clear done</button>
+    </div>
+  </header>
+  <main id="board"></main>
+
+<script>
+(() => {
+  const COLUMNS = [
+    { id: "inbox",       label: "Inbox" },
+    { id: "not-started", label: "Not started" },
+    { id: "in-progress", label: "In Progress" },
+    { id: "focus",       label: "Focus" },
+    { id: "done",        label: "Done" },
+  ];
+  const FOCUS_CAP = 5;
+
+  const now = () => new Date().toISOString();
+  const statusEl = document.getElementById("status");
+  const setStatus = (msg) => { statusEl.textContent = msg || ""; };
+
+  let contextFilter = "all";  // "all" | "Personal" | "Work"
+  let focusedTaskId = null;
+  const visibleTasks = () => contextFilter === "all"
+    ? state.tasks
+    : state.tasks.filter(t => t.context === contextFilter);
+
+  // Tasks in render order (column-major) — used for j/k navigation
+  function visibleTasksInOrder() {
+    const tasks = visibleTasks();
+    const result = [];
+    for (const col of COLUMNS) {
+      result.push(...tasks.filter(t => t.status === col.id));
+    }
+    return result;
+  }
+
+  function focusCard(id, { scroll = true } = {}) {
+    focusedTaskId = id;
+    document.querySelectorAll(".card.focused").forEach(c => c.classList.remove("focused"));
+    if (!id) return;
+    const el = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+    if (el) {
+      el.classList.add("focused");
+      if (scroll) el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function moveFocus(delta) {
+    const ordered = visibleTasksInOrder();
+    if (!ordered.length) return;
+    const idx = ordered.findIndex(t => t.id === focusedTaskId);
+    const next = idx < 0 ? 0 : Math.max(0, Math.min(ordered.length - 1, idx + delta));
+    focusCard(ordered[next].id);
+  }
+
+  /** @type {{tasks: Array<{id:string,title:string,status:string,createdAt:string,updatedAt:string}>}} */
+  let state = { tasks: [] };
+
+  async function api(method, path = "", body) {
+    const res = await fetch("/api/tasks" + path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json()).error || ""; } catch {}
+      throw new Error(`${method} ${path || "/"} → ${res.status}${detail ? ": " + detail : ""}`);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  async function loadTasks() {
+    setStatus("Loading…");
+    try {
+      const { tasks } = await api("GET");
+      state.tasks = tasks;
+      setStatus("");
+      render();
+    } catch (e) {
+      setStatus("Load failed");
+      console.error(e);
+      alert("Could not load tasks: " + e.message);
+    }
+  }
+
+  // --- rendering ---
+  const board = document.getElementById("board");
+
+  function render() {
+    board.innerHTML = "";
+    const tasks0 = visibleTasks();
+    // Ensure focusedTaskId is still visible; otherwise pick the first visible task
+    if (focusedTaskId && !tasks0.some(t => t.id === focusedTaskId)) focusedTaskId = null;
+    if (!focusedTaskId && tasks0.length) focusedTaskId = visibleTasksInOrder()[0]?.id || null;
+    for (const col of COLUMNS) {
+      const tasks = tasks0.filter(t => t.status === col.id);
+      const colEl = document.createElement("section");
+      colEl.className = "col";
+      colEl.dataset.status = col.id;
+      const isFocus = col.id === "focus";
+      const overCap = isFocus && tasks.length > FOCUS_CAP;
+      if (overCap) colEl.classList.add("over-cap");
+      const countLabel = isFocus ? `${tasks.length}/${FOCUS_CAP}` : `${tasks.length}`;
+      colEl.innerHTML = `
+        <div class="col-head">
+          <div class="col-title"><span class="dot"></span>${col.label}</div>
+          <span class="count">${countLabel}</span>
+        </div>
+        <div class="cards" data-status="${col.id}"></div>
+        <button class="add" data-add="${col.id}">+ Add task</button>
+      `;
+      const cardsEl = colEl.querySelector(".cards");
+
+      if (tasks.length === 0) {
+        const e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = "No tasks";
+        cardsEl.appendChild(e);
+      } else {
+        for (const t of tasks) cardsEl.appendChild(renderCard(t));
+      }
+
+      // Drop target
+      cardsEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        cardsEl.classList.add("drag-over");
+      });
+      cardsEl.addEventListener("dragleave", () => cardsEl.classList.remove("drag-over"));
+      cardsEl.addEventListener("drop", (e) => {
+        e.preventDefault();
+        cardsEl.classList.remove("drag-over");
+        const id = e.dataTransfer.getData("text/plain");
+        const task = state.tasks.find(t => t.id === id);
+        if (!task) return;
+        if (task.status === col.id) return;
+        if (col.id === "focus") {
+          const focusCount = state.tasks.filter(t => t.status === "focus").length;
+          if (focusCount >= FOCUS_CAP) {
+            setStatus(`Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+            setTimeout(() => setStatus(""), 3000);
+            return;
+          }
+        }
+        patchTask(task.id, { status: col.id });
+      });
+
+      colEl.querySelector(".add").addEventListener("click", () => openNewInput(col.id, colEl));
+      board.appendChild(colEl);
+    }
+    // Re-apply focus outline after rebuilding DOM
+    if (focusedTaskId) {
+      const el = document.querySelector(`.card[data-id="${CSS.escape(focusedTaskId)}"]`);
+      if (el) el.classList.add("focused");
+    }
+  }
+
+  function renderCard(task) {
+    const el = document.createElement("article");
+    el.className = "card";
+    el.draggable = true;
+    el.dataset.id = task.id;
+    const badges = [];
+    if (task.context) {
+      badges.push(`<span class="badge context-${task.context}">${task.context}</span>`);
+    }
+    if (task.source && task.source !== "Manual") {
+      const link = task.sourceLink
+        ? `<a href="${escapeHtml(task.sourceLink)}" target="_blank" rel="noopener" class="badge" title="Open source">${task.source}↗</a>`
+        : `<span class="badge">${task.source}</span>`;
+      badges.push(link);
+    }
+    if (task.staleness) {
+      badges.push(`<span class="badge staleness">${escapeHtml(task.staleness)}</span>`);
+    }
+    if (task.priority) {
+      badges.push(`<span class="badge">${escapeHtml(task.priority)}</span>`);
+    }
+    el.innerHTML = `
+      <button class="del" title="Delete">×</button>
+      <div class="title" tabindex="0">${escapeHtml(task.title)}</div>
+      ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
+      <div class="meta"><span>${formatDate(task.updatedAt)}</span></div>
+    `;
+    const titleEl = el.querySelector(".title");
+
+    titleEl.addEventListener("click", () => editTitle(titleEl, task));
+    titleEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !titleEl.isContentEditable) {
+        e.preventDefault(); editTitle(titleEl, task);
+      }
+    });
+
+    el.querySelector(".del").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTask(task.id);
+    });
+
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", task.id);
+      e.dataTransfer.effectAllowed = "move";
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+    el.addEventListener("mousedown", () => focusCard(task.id, { scroll: false }));
+    return el;
+  }
+
+  function editTitle(titleEl, task) {
+    if (titleEl.isContentEditable) return;
+    const original = task.title;
+    titleEl.contentEditable = "true";
+    titleEl.focus();
+    // Place cursor at end
+    const range = document.createRange();
+    range.selectNodeContents(titleEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+
+    const finish = (commit) => {
+      titleEl.contentEditable = "false";
+      const next = titleEl.textContent.trim();
+      if (commit && next && next !== original) {
+        patchTask(task.id, { title: next });
+      } else {
+        titleEl.textContent = original;
+      }
+    };
+
+    titleEl.addEventListener("blur", () => finish(true), { once: true });
+    titleEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); }
+      if (e.key === "Escape") { titleEl.textContent = original; titleEl.blur(); }
+    }, { once: true });
+  }
+
+  function openNewInput(status, colEl) {
+    const existing = colEl.querySelector(".new-input");
+    if (existing) { existing.querySelector("textarea").focus(); return; }
+
+    const addBtn = colEl.querySelector(".add");
+    const wrap = document.createElement("div");
+    wrap.className = "new-input";
+    wrap.innerHTML = `
+      <textarea placeholder="Task title… (Enter to add, Esc to cancel)"></textarea>
+      <div class="row">
+        <button data-cancel>Cancel</button>
+        <button data-add-confirm>Add</button>
+      </div>
+    `;
+    addBtn.replaceWith(wrap);
+    const ta = wrap.querySelector("textarea");
+    ta.focus();
+
+    const cancel = () => render();
+    const confirm = async () => {
+      const v = ta.value.trim();
+      if (!v) return cancel();
+      const ctx = contextFilter === "Work" ? "Work" : "Personal";
+      ta.disabled = true;
+      try {
+        const created = await api("POST", "", { title: v, status, context: ctx, source: "Manual" });
+        state.tasks.push(created);
+        render();
+      } catch (e) {
+        ta.disabled = false;
+        alert("Could not add task: " + e.message);
+      }
+    };
+
+    wrap.querySelector("[data-cancel]").addEventListener("click", cancel);
+    wrap.querySelector("[data-add-confirm]").addEventListener("click", confirm);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); confirm(); }
+      if (e.key === "Escape") { e.preventDefault(); cancel(); }
+    });
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+  function formatDate(iso) {
+    const d = new Date(iso);
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
+  // --- mutations ---
+  async function patchTask(id, patch) {
+    const idx = state.tasks.findIndex(t => t.id === id);
+    if (idx < 0) return;
+    const before = state.tasks[idx];
+    state.tasks[idx] = { ...before, ...patch, updatedAt: now() };
+    render();
+    try {
+      const updated = await api("PATCH", "/" + encodeURIComponent(id), patch);
+      state.tasks[idx] = updated;
+      render();
+    } catch (e) {
+      state.tasks[idx] = before;
+      render();
+      alert("Update failed: " + e.message);
+    }
+  }
+
+  async function deleteTask(id) {
+    const idx = state.tasks.findIndex(t => t.id === id);
+    if (idx < 0) return;
+    const removed = state.tasks[idx];
+    state.tasks.splice(idx, 1);
+    render();
+    try {
+      await api("DELETE", "/" + encodeURIComponent(id));
+    } catch (e) {
+      state.tasks.splice(idx, 0, removed);
+      render();
+      alert("Delete failed: " + e.message);
+    }
+  }
+
+  // --- context filter ---
+  document.getElementById("context-filter").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-context]");
+    if (!btn) return;
+    contextFilter = btn.dataset.context;
+    document.querySelectorAll("#context-filter button").forEach(b => {
+      b.classList.toggle("active", b.dataset.context === contextFilter);
+    });
+    render();
+  });
+
+  // --- toolbar actions ---
+  document.getElementById("clear-done").addEventListener("click", async () => {
+    const done = state.tasks.filter(t => t.status === "done");
+    if (done.length === 0) return;
+    if (!confirm(`Remove ${done.length} completed task${done.length === 1 ? "" : "s"}?`)) return;
+    setStatus(`Clearing ${done.length}…`);
+    const results = await Promise.allSettled(done.map(t => api("DELETE", "/" + encodeURIComponent(t.id))));
+    const okIds = new Set(done.filter((_, i) => results[i].status === "fulfilled").map(t => t.id));
+    state.tasks = state.tasks.filter(t => !okIds.has(t.id));
+    setStatus("");
+    render();
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed) alert(`${failed} task(s) failed to delete`);
+  });
+
+  // --- keyboard ---
+  function isTyping(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+  }
+
+  function getFocusedTask() {
+    return state.tasks.find(t => t.id === focusedTaskId);
+  }
+
+  function moveFocusedToColumn(colId) {
+    const task = getFocusedTask();
+    if (!task || task.status === colId) return;
+    if (colId === "focus") {
+      const focusCount = state.tasks.filter(t => t.status === "focus").length;
+      if (focusCount >= FOCUS_CAP) {
+        setStatus(`Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+        setTimeout(() => setStatus(""), 3000);
+        return;
+      }
+    }
+    patchTask(task.id, { status: colId });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (isTyping(e.target)) return;
+
+    // Navigation
+    if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); moveFocus(1); return; }
+    if (e.key === "ArrowUp"   || e.key === "k") { e.preventDefault(); moveFocus(-1); return; }
+
+    // New task — opens add input in current focused column, or Inbox
+    if (e.key === "n") {
+      e.preventDefault();
+      const focused = getFocusedTask();
+      const targetCol = focused ? focused.status : "inbox";
+      const colEl = board.querySelector(`.col[data-status="${targetCol}"]`);
+      if (colEl) openNewInput(targetCol, colEl);
+      return;
+    }
+
+    // Cmd/Ctrl+E: edit focused card title
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
+      e.preventDefault();
+      const task = getFocusedTask();
+      if (!task) return;
+      const titleEl = document.querySelector(`.card[data-id="${CSS.escape(task.id)}"] .title`);
+      if (titleEl) editTitle(titleEl, task);
+      return;
+    }
+
+    // Cmd/Ctrl+Backspace: delete focused card
+    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
+      e.preventDefault();
+      const task = getFocusedTask();
+      if (!task) return;
+      if (confirm(`Delete "${task.title}"?`)) deleteTask(task.id);
+      return;
+    }
+
+    // 1-5: move focused card to column N (no modifier)
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-5]$/.test(e.key)) {
+      const colId = COLUMNS[parseInt(e.key, 10) - 1].id;
+      e.preventDefault();
+      moveFocusedToColumn(colId);
+      return;
+    }
+  });
+
+  loadTasks();
+})();
+</script>
+</body>
+</html>
