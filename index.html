@@ -80,13 +80,29 @@
     border-bottom: 1px solid var(--border);
     background: var(--panel);
   }
-  .col-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-  .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--muted); }
-  .col[data-status="inbox"]       .dot { background: #a8a29e; }
+  .col-title {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-weight: 500; font-size: 13px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); }
+  .col[data-status="inbox"]       .col-title { background: #f1f5f9; color: #475569; }
+  .col[data-status="inbox"]       .dot { background: #94a3b8; }
+  .col[data-status="not-started"] .col-title { background: #f1f5f9; color: #475569; }
   .col[data-status="not-started"] .dot { background: #94a3b8; }
+  .col[data-status="in-progress"] .col-title { background: #dbeafe; color: #1e3a8a; }
   .col[data-status="in-progress"] .dot { background: #3b82f6; }
+  .col[data-status="focus"]       .col-title { background: #fce7f3; color: #9d174d; }
   .col[data-status="focus"]       .dot { background: #ec4899; }
-  .col[data-status="done"]        .dot { background: var(--accent); }
+  .col[data-status="done"]        .col-title { background: #d1fae5; color: #065f46; }
+  .col[data-status="done"]        .dot { background: #10b981; }
+  @media (prefers-color-scheme: dark) {
+    .col[data-status="inbox"]       .col-title { background: #1e293b; color: #cbd5e1; }
+    .col[data-status="not-started"] .col-title { background: #1e293b; color: #cbd5e1; }
+    .col[data-status="in-progress"] .col-title { background: #1e3a8a40; color: #93c5fd; }
+    .col[data-status="focus"]       .col-title { background: #831843; color: #fbcfe8; }
+    .col[data-status="done"]        .col-title { background: #064e3b; color: #6ee7b7; }
+  }
   .col.over-cap .col-head { background: #fee2e2; }
   @media (prefers-color-scheme: dark) {
     .col.over-cap .col-head { background: #450a0a; }
@@ -123,10 +139,11 @@
     display: flex; justify-content: space-between; align-items: center;
   }
   .col[data-status="done"] .card .title { text-decoration: line-through; color: var(--muted); }
-  .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
   .badge {
-    font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 4px;
+    font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 999px;
     border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
   }
   .badge.context-Personal { background: #dbeafe; color: #1e3a8a; border-color: transparent; }
   .badge.context-Work     { background: #ede9fe; color: #5b21b6; border-color: transparent; }
@@ -134,16 +151,50 @@
     .badge.context-Personal { background: #1e3a8a; color: #dbeafe; }
     .badge.context-Work     { background: #4c1d95; color: #ede9fe; }
   }
-  .badge.staleness { background: var(--panel-2); }
+  .badge.effort { font-weight: 600; letter-spacing: 0.02em; border-color: transparent; }
+  .badge.effort-S { background: #d1fae5; color: #065f46; }
+  .badge.effort-M { background: #fef3c7; color: #92400e; }
+  .badge.effort-L { background: #fee2e2; color: #991b1b; }
+  .badge.effort-XL { background: #fce7f3; color: #9d174d; }
+  @media (prefers-color-scheme: dark) {
+    .badge.effort-S  { background: #064e3b; color: #6ee7b7; }
+    .badge.effort-M  { background: #78350f; color: #fde68a; }
+    .badge.effort-L  { background: #7f1d1d; color: #fecaca; }
+    .badge.effort-XL { background: #831843; color: #fbcfe8; }
+  }
+  .badge.staleness { background: var(--panel-2); border-color: transparent; }
+  .badge.staleness::before {
+    content: ""; display: inline-block;
+    width: 7px; height: 7px; border-radius: 999px;
+  }
+  .badge.stale-fresh::before      { background: #10b981; }
+  .badge.stale-stale::before      { background: #ef4444; }
+  .badge.stale-very-stale::before { background: #1f2937; }
+  @media (prefers-color-scheme: dark) {
+    .badge.stale-very-stale::before { background: #f5f5f4; }
+  }
   .filter-bar {
-    display: flex; gap: 4px; align-items: center;
+    display: flex; gap: 6px; align-items: center;
     font-size: 12px; color: var(--muted);
   }
   .filter-bar button {
-    font-size: 12px; padding: 4px 8px;
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel);
+    color: var(--muted);
   }
-  .filter-bar button.active {
-    background: var(--accent-soft); border-color: var(--accent); color: var(--text);
+  .filter-bar button:hover { color: var(--text); }
+  .filter-bar button[data-context="Personal"].active {
+    background: #dbeafe; color: #1e3a8a; border-color: transparent;
+  }
+  .filter-bar button[data-context="Work"].active {
+    background: #ede9fe; color: #5b21b6; border-color: transparent;
+  }
+  .filter-bar button[data-context="all"].active {
+    background: var(--panel-2); color: var(--text); border-color: var(--border);
+  }
+  @media (prefers-color-scheme: dark) {
+    .filter-bar button[data-context="Personal"].active { background: #1e3a8a; color: #dbeafe; }
+    .filter-bar button[data-context="Work"].active     { background: #4c1d95; color: #ede9fe; }
   }
   .card .del {
     position: absolute; top: 6px; right: 6px;
@@ -160,6 +211,14 @@
     text-align: left; font-size: 13px;
   }
   .add:hover { color: var(--text); border-color: var(--accent); }
+  .col[data-status="in-progress"] .add:hover { color: #1e3a8a; border-color: #3b82f6; }
+  .col[data-status="focus"]       .add:hover { color: #9d174d; border-color: #ec4899; }
+  .col[data-status="done"]        .add:hover { color: #065f46; border-color: #10b981; }
+  @media (prefers-color-scheme: dark) {
+    .col[data-status="in-progress"] .add:hover { color: #93c5fd; }
+    .col[data-status="focus"]       .add:hover { color: #fbcfe8; }
+    .col[data-status="done"]        .add:hover { color: #6ee7b7; }
+  }
   .new-input {
     margin: 8px 10px 10px;
     display: flex; flex-direction: column; gap: 6px;
@@ -186,6 +245,7 @@
     background: var(--bg);
     z-index: 100;
   }
+  .auth-overlay[hidden] { display: none; }
   .auth-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -199,13 +259,15 @@
   .auth-card p.subtitle {
     margin: 0 0 20px; color: var(--muted); font-size: 13px;
   }
-  .auth-card input[type="email"] {
+  .auth-card input[type="email"],
+  .auth-card input[type="password"] {
     width: 100%; font: inherit; color: var(--text);
     background: var(--panel-2); border: 1px solid var(--border);
     border-radius: 6px; padding: 10px 12px; outline: none;
     margin-bottom: 10px;
   }
-  .auth-card input[type="email"]:focus {
+  .auth-card input[type="email"]:focus,
+  .auth-card input[type="password"]:focus {
     border-color: var(--accent);
   }
   .auth-card button[type="submit"] {
@@ -221,6 +283,52 @@
   }
   .auth-msg.error { color: var(--danger); }
   .auth-msg.success { color: var(--accent); }
+
+  /* Drawer */
+  .drawer-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.25);
+    z-index: 50;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+  .drawer-backdrop[data-open="true"] { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 520px; max-width: 92vw;
+    background: var(--panel); border-left: 1px solid var(--border);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.08);
+    z-index: 51;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    display: flex; flex-direction: column;
+  }
+  .drawer-backdrop[data-open="true"] .drawer { transform: translateX(0); }
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .drawer .field { margin-bottom: 16px; }
+  .drawer .field-row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .drawer .field-row label { font-size: 12px; color: var(--muted); }
+  .drawer input[type="text"], .drawer select, .drawer textarea {
+    width: 100%; font: inherit; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 9px; outline: none;
+  }
+  .drawer input[type="text"]:focus,
+  .drawer select:focus,
+  .drawer textarea:focus { border-color: var(--accent); }
+  .drawer textarea { min-height: 220px; resize: vertical; font-family: inherit; line-height: 1.5; }
+  .drawer .title-input {
+    font-size: 20px; font-weight: 600;
+    border: none; background: transparent; padding: 0;
+    color: var(--text);
+  }
+  .drawer .desc-label {
+    font-size: 12px; color: var(--muted); margin: 18px 0 6px;
+  }
 </style>
 </head>
 <body>
@@ -242,13 +350,63 @@
   <div id="auth" class="auth-overlay">
     <div class="auth-card">
       <h2>Kanban</h2>
-      <p class="subtitle">Sign in with a one-time link</p>
+      <p class="subtitle">Sign in</p>
       <form id="auth-form">
         <input type="email" placeholder="you@example.com" required autocomplete="email" />
-        <button type="submit">Send magic link</button>
+        <input type="password" placeholder="password" required autocomplete="current-password" />
+        <button type="submit">Sign in</button>
       </form>
       <p class="auth-msg" id="auth-msg"></p>
     </div>
+  </div>
+
+  <div class="drawer-backdrop" id="drawer-backdrop">
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <input type="text" class="title-input" id="drawer-title" placeholder="Title" />
+        <button class="ghost" id="drawer-close" title="Close (Esc)">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="field-row">
+          <label for="drawer-status">Status</label>
+          <select id="drawer-status">
+            <option value="inbox">Inbox</option>
+            <option value="not-started">Not started</option>
+            <option value="in-progress">In Progress</option>
+            <option value="focus">Focus</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label for="drawer-context">Context</label>
+          <select id="drawer-context">
+            <option value="">—</option>
+            <option value="Personal">Personal</option>
+            <option value="Work">Work</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label for="drawer-priority">Priority</label>
+          <input type="text" id="drawer-priority" placeholder="e.g. This Week" />
+        </div>
+        <div class="field-row">
+          <label for="drawer-effort">Effort</label>
+          <select id="drawer-effort">
+            <option value="">—</option>
+            <option value="S">S — quick (&lt;30 min)</option>
+            <option value="M">M — focused (30 min–2 hr)</option>
+            <option value="L">L — deep (½ day)</option>
+            <option value="XL">XL — multi-day</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label for="drawer-source-link">Source link</label>
+          <input type="text" id="drawer-source-link" placeholder="https://…" />
+        </div>
+        <div class="desc-label">Description</div>
+        <textarea id="drawer-description" placeholder="Notes, context, links…"></textarea>
+      </div>
+    </aside>
   </div>
 
 <script>
@@ -315,20 +473,18 @@
 
   document.getElementById('auth-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = e.target.querySelector('input').value.trim();
+    const email = e.target.querySelector('input[type="email"]').value.trim();
+    const password = e.target.querySelector('input[type="password"]').value;
     const msg = document.getElementById('auth-msg');
     msg.className = 'auth-msg';
-    msg.textContent = 'Sending...';
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    });
+    msg.textContent = 'Signing in...';
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       msg.className = 'auth-msg error';
       msg.textContent = error.message;
     } else {
       msg.className = 'auth-msg success';
-      msg.textContent = 'Check your email for the sign-in link.';
+      msg.textContent = 'Signed in.';
     }
   });
 
@@ -341,11 +497,13 @@
     return {
       id: row.id,
       title: row.title,
+      description: row.description || "",
       status: row.status,
       context: row.context,
       source: row.source,
       sourceLink: row.source_link,
       priority: row.priority,
+      effort: row.effort,
       staleness: computeStaleness(row.created_at),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -354,20 +512,21 @@
   function patchToRow(patch) {
     const row = {};
     if ('title' in patch) row.title = patch.title;
+    if ('description' in patch) row.description = patch.description;
     if ('status' in patch) row.status = patch.status;
     if ('context' in patch) row.context = patch.context;
     if ('source' in patch) row.source = patch.source;
     if ('sourceLink' in patch) row.source_link = patch.sourceLink;
     if ('priority' in patch) row.priority = patch.priority;
+    if ('effort' in patch) row.effort = patch.effort;
     return row;
   }
   function computeStaleness(iso) {
     if (!iso) return null;
     const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-    if (days < 7) return null;
-    if (days < 30) return `${Math.floor(days / 7)}w old`;
-    if (days < 365) return `${Math.floor(days / 30)}mo old`;
-    return `${Math.floor(days / 365)}y old`;
+    if (days < 7) return { label: "Fresh", level: "fresh" };
+    if (days < 30) return { label: "Stale", level: "stale" };
+    return { label: "Very Stale", level: "very-stale" };
   }
 
   // === Data layer ===
@@ -530,10 +689,13 @@
       badges.push(link);
     }
     if (task.staleness) {
-      badges.push(`<span class="badge staleness">${escapeHtml(task.staleness)}</span>`);
+      badges.push(`<span class="badge staleness stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`);
     }
     if (task.priority) {
       badges.push(`<span class="badge">${escapeHtml(task.priority)}</span>`);
+    }
+    if (task.effort) {
+      badges.push(`<span class="badge effort effort-${task.effort}">${escapeHtml(task.effort)}</span>`);
     }
     el.innerHTML = `
       <button class="del" title="Delete">×</button>
@@ -541,13 +703,9 @@
       ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
       <div class="meta"><span>${formatDate(task.updatedAt)}</span></div>
     `;
-    const titleEl = el.querySelector(".title");
-
-    titleEl.addEventListener("click", () => editTitle(titleEl, task));
-    titleEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !titleEl.isContentEditable) {
-        e.preventDefault(); editTitle(titleEl, task);
-      }
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".del")) return;
+      openDrawer(task.id);
     });
 
     el.querySelector(".del").addEventListener("click", (e) => {
@@ -565,32 +723,58 @@
     return el;
   }
 
-  function editTitle(titleEl, task) {
-    if (titleEl.isContentEditable) return;
-    const original = task.title;
-    titleEl.contentEditable = "true";
-    titleEl.focus();
-    const range = document.createRange();
-    range.selectNodeContents(titleEl);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges(); sel.addRange(range);
+  // === Drawer ===
+  let drawerTaskId = null;
 
-    const finish = (commit) => {
-      titleEl.contentEditable = "false";
-      const next = titleEl.textContent.trim();
-      if (commit && next && next !== original) {
-        patchTask(task.id, { title: next });
-      } else {
-        titleEl.textContent = original;
-      }
-    };
+  function openDrawer(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    drawerTaskId = taskId;
+    document.getElementById('drawer-title').value = task.title || '';
+    document.getElementById('drawer-description').value = task.description || '';
+    document.getElementById('drawer-status').value = task.status || 'inbox';
+    document.getElementById('drawer-context').value = task.context || '';
+    document.getElementById('drawer-priority').value = task.priority || '';
+    document.getElementById('drawer-effort').value = task.effort || '';
+    document.getElementById('drawer-source-link').value = task.sourceLink || '';
+    document.getElementById('drawer-backdrop').dataset.open = 'true';
+    document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+    setTimeout(() => document.getElementById('drawer-title').focus(), 50);
+  }
 
-    titleEl.addEventListener("blur", () => finish(true), { once: true });
-    titleEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); }
-      if (e.key === "Escape") { titleEl.textContent = original; titleEl.blur(); }
-    }, { once: true });
+  function closeDrawer() {
+    drawerTaskId = null;
+    document.getElementById('drawer-backdrop').dataset.open = 'false';
+    document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  function setupDrawer() {
+    const fields = [
+      ['drawer-title', 'title', 'blur'],
+      ['drawer-description', 'description', 'blur'],
+      ['drawer-status', 'status', 'change'],
+      ['drawer-context', 'context', 'change'],
+      ['drawer-priority', 'priority', 'blur'],
+      ['drawer-effort', 'effort', 'change'],
+      ['drawer-source-link', 'sourceLink', 'blur'],
+    ];
+    for (const [elId, fieldKey, evt] of fields) {
+      const el = document.getElementById(elId);
+      el.addEventListener(evt, () => {
+        if (!drawerTaskId) return;
+        const task = state.tasks.find(t => t.id === drawerTaskId);
+        if (!task) return;
+        const raw = el.value;
+        const next = raw === '' ? null : raw;
+        const current = task[fieldKey] || null;
+        if (next === current) return;
+        patchTask(drawerTaskId, { [fieldKey]: next });
+      });
+    }
+    document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'drawer-backdrop') closeDrawer();
+    });
   }
 
   function openNewInput(status, colEl) {
@@ -748,12 +932,17 @@
       return;
     }
 
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
-      e.preventDefault();
+    if (e.key === "Enter" || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e")) {
       const task = getFocusedTask();
       if (!task) return;
-      const titleEl = document.querySelector(`.card[data-id="${CSS.escape(task.id)}"] .title`);
-      if (titleEl) editTitle(titleEl, task);
+      e.preventDefault();
+      openDrawer(task.id);
+      return;
+    }
+
+    if (e.key === "Escape" && drawerTaskId) {
+      e.preventDefault();
+      closeDrawer();
       return;
     }
 
@@ -773,6 +962,7 @@
     }
   });
 
+  setupDrawer();
   initAuth();
 })();
 </script>

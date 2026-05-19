@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kanban": {
+      "command": "python3",
+      "args": ["/Users/rockygowni/rg_workspace/kanban/mcp_server.py"]
+    }
+  }
+}
