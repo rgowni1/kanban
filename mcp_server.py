@@ -12,7 +12,8 @@ SERVER_NAME = "kanban"
 SERVER_VERSION = "0.1.0"
 
 STATUSES = ["inbox", "not-started", "in-progress", "focus", "done"]
-EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "priority", "effort")
+TIMINGS = ["today", "tomorrow", "this-week", "next-30-days"]
+EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks")
 
 
 def load_env(path):
@@ -76,12 +77,32 @@ def fmt_task(row):
     extras = []
     if row.get("context"):
         extras.append(row["context"])
-    if row.get("priority"):
-        extras.append(f"P:{row['priority']}")
+    if row.get("timing"):
+        extras.append(f"due:{row['timing']}")
+    if row.get("effort"):
+        extras.append(f"effort:{row['effort']}")
+    subtasks = row.get("subtasks") or []
+    if subtasks:
+        done = sum(1 for s in subtasks if s.get("done"))
+        extras.append(f"subtasks:{done}/{len(subtasks)}")
     if extras:
         bits.append("(" + ", ".join(extras) + ")")
     bits.append(f"id={row.get('id')}")
     return " ".join(bits)
+
+
+def normalize_subtasks(value):
+    if not isinstance(value, list):
+        raise ValueError("subtasks must be an array")
+    out = []
+    for s in value:
+        if isinstance(s, str):
+            out.append({"text": s, "done": False})
+        elif isinstance(s, dict):
+            out.append({"text": str(s.get("text", "")), "done": bool(s.get("done", False))})
+        else:
+            raise ValueError("each subtask must be a string or {text, done}")
+    return out
 
 
 def tool_create_task(args):
@@ -90,9 +111,16 @@ def tool_create_task(args):
     row = {"user_id": KANBAN_USER_ID, "title": args["title"], "status": args.get("status", "inbox")}
     if row["status"] not in STATUSES:
         return error_content(f"status must be one of {STATUSES}")
-    for k in ("description", "context", "source", "source_link", "priority", "effort"):
+    if args.get("timing") and args["timing"] not in TIMINGS:
+        return error_content(f"timing must be one of {TIMINGS}")
+    for k in ("description", "context", "source", "source_link", "timing", "effort"):
         if args.get(k) is not None:
             row[k] = args[k]
+    if args.get("subtasks") is not None:
+        try:
+            row["subtasks"] = normalize_subtasks(args["subtasks"])
+        except ValueError as e:
+            return error_content(str(e))
     status, data = sb_request("POST", body=row)
     if status >= 400:
         return error_content(f"Supabase {status}: {data}")
@@ -112,6 +140,10 @@ def tool_list_tasks(args):
         params["status"] = f"eq.{args['status']}"
     if args.get("context"):
         params["context"] = f"eq.{args['context']}"
+    if args.get("timing"):
+        if args["timing"] not in TIMINGS:
+            return error_content(f"timing must be one of {TIMINGS}")
+        params["timing"] = f"eq.{args['timing']}"
     if args.get("search"):
         params["title"] = f"ilike.*{args['search']}*"
     status, data = sb_request("GET", params=params)
@@ -132,6 +164,13 @@ def tool_update_task(args):
         return error_content("no fields to update")
     if "status" in patch and patch["status"] not in STATUSES:
         return error_content(f"status must be one of {STATUSES}")
+    if "timing" in patch and patch["timing"] not in TIMINGS:
+        return error_content(f"timing must be one of {TIMINGS}")
+    if "subtasks" in patch:
+        try:
+            patch["subtasks"] = normalize_subtasks(patch["subtasks"])
+        except ValueError as e:
+            return error_content(str(e))
     params = {"id": f"eq.{task_id}", "user_id": f"eq.{KANBAN_USER_ID}"}
     status, data = sb_request("PATCH", body=patch, params=params)
     if status >= 400:
@@ -179,20 +218,31 @@ TOOLS = [
                 "context": {"type": "string", "description": "e.g. Personal, Work"},
                 "source": {"type": "string"},
                 "source_link": {"type": "string"},
-                "priority": {"type": "string"},
+                "timing": {"type": "string", "enum": TIMINGS, "description": "when it's due: today / tomorrow / this-week / next-30-days"},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"], "description": "T-shirt size: S<30m, M=30m-2h, L=½ day, XL=multi-day"},
+                "subtasks": {
+                    "type": "array",
+                    "description": "Checklist items. Pass strings or {text, done} objects.",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object", "properties": {"text": {"type": "string"}, "done": {"type": "boolean"}}, "required": ["text"]},
+                        ],
+                    },
+                },
             },
             "required": ["title"],
         },
     },
     {
         "name": "list_tasks",
-        "description": "List kanban tasks, most-recently-updated first. Optional filters by status, context, and title substring.",
+        "description": "List kanban tasks, most-recently-updated first. Optional filters by status, context, timing, and title substring.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "status": {"type": "string", "enum": STATUSES},
                 "context": {"type": "string"},
+                "timing": {"type": "string", "enum": TIMINGS},
                 "search": {"type": "string", "description": "case-insensitive title substring match"},
                 "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
             },
@@ -211,8 +261,18 @@ TOOLS = [
                 "context": {"type": "string"},
                 "source": {"type": "string"},
                 "source_link": {"type": "string"},
-                "priority": {"type": "string"},
+                "timing": {"type": "string", "enum": TIMINGS},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"]},
+                "subtasks": {
+                    "type": "array",
+                    "description": "Replace the full subtask list. Strings or {text, done} objects.",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object", "properties": {"text": {"type": "string"}, "done": {"type": "boolean"}}, "required": ["text"]},
+                        ],
+                    },
+                },
             },
             "required": ["id"],
         },
