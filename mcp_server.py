@@ -14,7 +14,7 @@ SERVER_VERSION = "0.1.0"
 
 STATUSES = ["inbox", "not-started", "in-progress", "focus", "done"]
 TIMINGS = ["today", "tomorrow", "this-week", "next-30-days"]
-EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks", "archived", "created_at")
+EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks", "archived", "created_at", "parent_id")
 EFFORT_POINTS = {"S": 1, "M": 2, "L": 5, "XL": 10}
 
 
@@ -109,6 +109,58 @@ def normalize_subtasks(value):
     return out
 
 
+# ---------- Project / parent hierarchy (2-level: project -> task) ----------
+
+def fetch_task(task_id, select="*"):
+    status, data = sb_request("GET", params={
+        "id": f"eq.{task_id}", "user_id": f"eq.{KANBAN_USER_ID}",
+        "select": select, "limit": "1",
+    })
+    if status >= 400 or not data:
+        return None
+    return data[0]
+
+
+def count_children(task_id):
+    status, data = sb_request("GET", params={
+        "parent_id": f"eq.{task_id}", "user_id": f"eq.{KANBAN_USER_ID}",
+        "select": "id", "limit": "1000",
+    })
+    return len(data) if status < 400 and isinstance(data, list) else 0
+
+
+def validate_parent(child_id, parent_id):
+    """Enforce the 2-level (project -> task) hierarchy. Returns an error string or None."""
+    if not parent_id:
+        return None
+    if child_id and parent_id == child_id:
+        return "a task cannot be its own parent"
+    parent = fetch_task(parent_id, select="id,parent_id")
+    if not parent:
+        return f"no task with id {parent_id} to use as parent"
+    if parent.get("parent_id"):
+        return "parent must be a top-level task — only 2 levels (project -> task) are allowed"
+    if child_id and count_children(child_id) > 0:
+        return "this task already has children, so it can't also become a child (2-level hierarchy only)"
+    return None
+
+
+def build_hierarchy_maps():
+    """One lightweight fetch -> (title_by_id, children_by_parent) for annotating lists."""
+    status, data = sb_request("GET", params={
+        "user_id": f"eq.{KANBAN_USER_ID}",
+        "select": "id,title,parent_id,status", "limit": "2000",
+    })
+    title_by_id, children_by_parent = {}, {}
+    if status < 400 and isinstance(data, list):
+        for r in data:
+            title_by_id[r["id"]] = r.get("title")
+            pid = r.get("parent_id")
+            if pid:
+                children_by_parent.setdefault(pid, []).append(r)
+    return title_by_id, children_by_parent
+
+
 def tool_create_task(args):
     if not args.get("title"):
         return error_content("title is required")
@@ -125,6 +177,11 @@ def tool_create_task(args):
             row["subtasks"] = normalize_subtasks(args["subtasks"])
         except ValueError as e:
             return error_content(str(e))
+    if args.get("parent_id") is not None:
+        err = validate_parent(None, args["parent_id"])
+        if err:
+            return error_content(err)
+        row["parent_id"] = args["parent_id"]
     if row["status"] == "focus" and "timing" not in row:
         row["timing"] = "today"
     status, data = sb_request("POST", body=row)
@@ -154,12 +211,25 @@ def tool_list_tasks(args):
         params["title"] = f"ilike.*{args['search']}*"
     if not args.get("include_archived"):
         params["archived"] = "eq.false"
+    if args.get("parent"):
+        params["parent_id"] = "is.null" if args["parent"] in ("none", "top") else f"eq.{args['parent']}"
     status, data = sb_request("GET", params=params)
     if status >= 400:
         return error_content(f"Supabase {status}: {data}")
     if not data:
         return text_content("No tasks.")
-    lines = [f"- {fmt_task(r)}" for r in data]
+    title_by_id, children_by_parent = build_hierarchy_maps()
+    lines = []
+    for r in data:
+        line = f"- {fmt_task(r)}"
+        pid = r.get("parent_id")
+        if pid and title_by_id.get(pid):
+            line += f"  ↳ in: {title_by_id[pid]}"
+        kids = children_by_parent.get(r["id"])
+        if kids:
+            done = sum(1 for k in kids if k.get("status") == "done")
+            line += f"  [project {done}/{len(kids)}]"
+        lines.append(line)
     return text_content(f"{len(data)} task(s):\n" + "\n".join(lines))
 
 
@@ -167,7 +237,14 @@ def tool_update_task(args):
     task_id = args.get("id")
     if not task_id:
         return error_content("id is required")
-    patch = {k: args[k] for k in EDITABLE_FIELDS if k in args and args[k] is not None}
+    patch = {k: args[k] for k in EDITABLE_FIELDS if k in args and args[k] is not None and k != "parent_id"}
+    # parent_id handled explicitly so an empty value can DETACH a task to "no project"
+    if "parent_id" in args:
+        pid = args["parent_id"] or None
+        err = validate_parent(task_id, pid)
+        if err:
+            return error_content(err)
+        patch["parent_id"] = pid
     if not patch:
         return error_content("no fields to update")
     if "status" in patch and patch["status"] not in STATUSES:
@@ -347,6 +424,7 @@ TOOLS = [
                 "source_link": {"type": "string"},
                 "timing": {"type": "string", "enum": TIMINGS, "description": "when it's due: today / tomorrow / this-week / next-30-days"},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"], "description": "T-shirt size: S<30m, M=30m-2h, L=½ day, XL=multi-day"},
+                "parent_id": {"type": "string", "description": "id of the parent task (project) this belongs under. Omit for a top-level task/project."},
                 "subtasks": {
                     "type": "array",
                     "description": "Checklist items. Pass strings or {text, done} objects.",
@@ -371,6 +449,7 @@ TOOLS = [
                 "context": {"type": "string"},
                 "timing": {"type": "string", "enum": TIMINGS},
                 "search": {"type": "string", "description": "case-insensitive title substring match"},
+                "parent": {"type": "string", "description": "filter to children of this project id; pass 'none' for top-level tasks/projects only"},
                 "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
                 "include_archived": {"type": "boolean", "description": "include archived (cleared) tasks; default false", "default": False},
             },
@@ -393,6 +472,7 @@ TOOLS = [
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"]},
                 "archived": {"type": "boolean", "description": "archive (hide from board, keep in capacity stats) or unarchive"},
                 "created_at": {"type": "string", "description": "ISO timestamp; set to now to reset staleness (Fresh/Stale/Very Stale is derived from this)"},
+                "parent_id": {"type": "string", "description": "move this task under a project (parent task id); pass empty string to detach to no project. 2-level hierarchy only."},
                 "subtasks": {
                     "type": "array",
                     "description": "Replace the full subtask list. Strings or {text, done} objects.",

@@ -40,11 +40,19 @@ notion_id    text                    -- import dedup key (legacy)
 description  text                    -- markdown
 timing       text                    -- today | tomorrow | this-week | next-30-days
 effort       text                    -- S | M | L | XL
-subtasks     jsonb         NOT NULL  -- [{text, done}, ...]; default '[]'
+parent_id    uuid          FK tasks(id) ON DELETE CASCADE  -- 2-level hierarchy: a child task's project
+subtasks     jsonb         NOT NULL  -- LEGACY. Migrated to child tasks; kept at '[]'. Do not write new data here.
 created_at   timestamptz   NOT NULL
 updated_at   timestamptz   NOT NULL
 completed_at timestamptz             -- auto-set by `set_completed_at` trigger on status → done; cleared on status → not-done
 ```
+
+## Projects (2-level hierarchy)
+
+`parent_id` makes any task nestable. A **project** is a top-level task (`parent_id IS NULL`) that has ≥1 child; a **child task** has `parent_id` set. Only 2 levels are allowed — a child can't have its own children, and a project can't be nested (enforced in `mcp_server.py:validate_parent` and the drawer UI). "Subtasks" in the drawer are now real child tasks (the old jsonb `subtasks` checklist was migrated into child rows and cleared).
+
+- **Board scope** (`state.project` in `index.html`): `null` = "All Tasks" shows top-level items only (children hidden, projects show a 📁 done/total chip). Selecting a project in the sidebar scopes the board to that project's children. New tasks added inside a project view inherit `parent_id` + context.
+- **MCP**: `create_task`/`update_task` take `parent_id` (update with empty string detaches to no project). `list_tasks` takes `parent` (a project id, or `'none'` for top-level only) and annotates children with `↳ in: <project>` and projects with `[project done/total]`.
 
 `timing` and `effort` are CHECK-constrained enums. `status` is too (enforced in app code; constraint may or may not exist server-side). `description` is rendered as markdown in the drawer via `marked` + `DOMPurify` (CDN-loaded).
 
