@@ -4,56 +4,187 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Kanban</title>
+<script>
+  // Resolve theme before first paint (no flash). 'system' follows the OS.
+  (function () {
+    try {
+      var pref = localStorage.getItem('kanban-theme') || 'system';
+      var dark = pref === 'dark' || (pref === 'system' &&
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #fafaf9;
+    --bg: #faf9f6;
     --panel: #ffffff;
-    --panel-2: #f5f5f4;
-    --border: #e7e5e4;
-    --text: #1c1917;
-    --muted: #78716c;
-    --accent: #0f766e;
-    --accent-soft: #ccfbf1;
+    --panel-2: #f3f1ea;
+    --border: #e2e0d6;
+    --text: #1a2830;
+    --muted: #64748b;
+    --accent: #5d7050;        /* olive, slightly deeper than #A5B586 for contrast on text */
+    --accent-soft: #ecefdb;
+    --brand-navy: #1f3946;
+    --brand-navy-soft: #2a4f62;
+    --brand-olive: #a5b586;
     --danger: #b91c1c;
     --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
     --radius: 10px;
+    --serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    --sans: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0c0a09;
-      --panel: #1c1917;
-      --panel-2: #292524;
-      --border: #44403c;
-      --text: #fafaf9;
-      --muted: #a8a29e;
-      --accent: #2dd4bf;
-      --accent-soft: #134e4a;
-      --danger: #f87171;
+    :root[data-theme="dark"] {
+      --bg: #0e1a22;
+      --panel: #16242e;
+      --panel-2: #1d2f3a;
+      --border: #2e4756;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #a5b586;
+      --accent-soft: #2f4234;
+      --brand-navy: #16242e;
+      --brand-navy-soft: #1d2f3a;
       --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
     }
-  }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font: 14px/1.45 var(--sans);
     background: var(--bg);
     color: var(--text);
+    display: flex; flex-direction: row;
+    overflow: hidden;
+  }
+  .app-main {
+    flex: 1; min-width: 0;
     display: flex; flex-direction: column;
     overflow: hidden;
   }
+
+  /* Left sidebar */
+  .sidebar {
+    width: 220px; flex: 0 0 220px;
+    background: var(--panel-2);
+    border-right: 1px solid var(--border);
+    padding: 18px 12px;
+    display: flex; flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+  }
+  .sidebar-brand {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 600;
+    padding: 2px 8px 8px; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .sidebar-brand .brand-dot {
+    width: 18px; height: 18px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--brand-navy), var(--brand-olive));
+  }
+  .sidebar-section { display: flex; flex-direction: column; gap: 2px; }
+  .sidebar-section-title {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted);
+    padding: 6px 10px 4px; font-weight: 600;
+  }
+  .sidebar-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 7px;
+    font-size: 13px; color: var(--text);
+    cursor: pointer; border: none; background: transparent;
+    text-align: left; width: 100%; font: inherit;
+  }
+  .sidebar-item:hover { background: var(--panel); }
+  .sidebar-item.active {
+    background: var(--accent-soft); color: var(--accent);
+    font-weight: 500;
+  }
+  .sidebar-item .icon { font-size: 14px; opacity: 0.9; }
+
   header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border);
+    padding: 20px 28px;
+    background: var(--brand-navy);
+    color: #fff;
+    border-bottom: none;
+  }
+  header .title-group { display: flex; align-items: center; gap: 18px; }
+  header .title-stack { display: flex; flex-direction: column; gap: 2px; }
+  header .eyebrow {
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--brand-olive);
   }
   header h1 {
-    margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0; font-family: var(--serif);
+    font-size: 24px; font-weight: 600; letter-spacing: -0.005em;
+    color: #fff;
   }
   header .actions { display: flex; gap: 8px; align-items: center; }
+  header .actions .ghost {
+    background: transparent; color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.18);
+  }
+  header .actions .ghost:hover {
+    background: rgba(255,255,255,0.08); color: #fff;
+  }
+
+  /* Focus callout button */
+  .focus-btn {
+    background: linear-gradient(135deg, #ec4899, #f43f5e);
+    color: #fff;
+    border: none;
+    padding: 7px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(236,72,153,0.25), 0 2px 8px rgba(236,72,153,0.18);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .focus-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+  .focus-btn:active { transform: translateY(0); }
+  .focus-btn.active {
+    background: linear-gradient(135deg, #be185d, #9f1239);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .focus-btn .focus-count {
+    background: rgba(255,255,255,0.25);
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+  }
+
+  /* Work / Personal context pills in the header */
+  .ctx-group { display: inline-flex; gap: 8px; align-items: center; }
+  .ctx-btn {
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.92);
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+  }
+  .ctx-btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.12); }
+  .ctx-btn.active {
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .ctx-work.active    { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+  .ctx-personal.active { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
   button {
     font: inherit; color: var(--text); background: var(--panel);
     border: 1px solid var(--border); border-radius: 6px;
@@ -101,17 +232,13 @@
   .col[data-status="focus"]       .dot { background: #ec4899; }
   .col[data-status="done"]        .col-title { background: #d1fae5; color: #065f46; }
   .col[data-status="done"]        .dot { background: #10b981; }
-  @media (prefers-color-scheme: dark) {
-    .col[data-status="inbox"]       .col-title { background: #1e293b; color: #cbd5e1; }
-    .col[data-status="not-started"] .col-title { background: #1e293b; color: #cbd5e1; }
-    .col[data-status="in-progress"] .col-title { background: #1e3a8a40; color: #93c5fd; }
-    .col[data-status="focus"]       .col-title { background: #831843; color: #fbcfe8; }
-    .col[data-status="done"]        .col-title { background: #064e3b; color: #6ee7b7; }
-  }
+    [data-theme="dark"] .col[data-status="inbox"]       .col-title { background: #1e293b; color: #cbd5e1; }
+  [data-theme="dark"] .col[data-status="not-started"] .col-title { background: #1e293b; color: #cbd5e1; }
+  [data-theme="dark"] .col[data-status="in-progress"] .col-title { background: #1e3a8a40; color: #93c5fd; }
+  [data-theme="dark"] .col[data-status="focus"]       .col-title { background: #831843; color: #fbcfe8; }
+  [data-theme="dark"] .col[data-status="done"]        .col-title { background: #064e3b; color: #6ee7b7; }
   .col.over-cap .col-head { background: #fee2e2; }
-  @media (prefers-color-scheme: dark) {
-    .col.over-cap .col-head { background: #450a0a; }
-  }
+    [data-theme="dark"] .col.over-cap .col-head { background: #450a0a; }
   .count { color: var(--muted); font-weight: 500; font-size: 12px; }
   .cards {
     flex: 1; overflow-y: auto; padding: 10px;
@@ -143,6 +270,7 @@
     margin-top: 6px; font-size: 11px; color: var(--muted);
     display: flex; justify-content: space-between; align-items: center;
   }
+  .card .meta .meta-created { font-weight: 600; color: var(--text); }
   .col[data-status="done"] .card .title { text-decoration: line-through; color: var(--muted); }
   .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
   .badge {
@@ -152,21 +280,17 @@
   }
   .badge.context-Personal { background: #dbeafe; color: #1e3a8a; border-color: transparent; }
   .badge.context-Work     { background: #ede9fe; color: #5b21b6; border-color: transparent; }
-  @media (prefers-color-scheme: dark) {
-    .badge.context-Personal { background: #1e3a8a; color: #dbeafe; }
-    .badge.context-Work     { background: #4c1d95; color: #ede9fe; }
-  }
+    [data-theme="dark"] .badge.context-Personal { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .badge.context-Work { background: #4c1d95; color: #ede9fe; }
   .badge.effort { font-weight: 600; letter-spacing: 0.02em; border-color: transparent; }
   .badge.effort-S { background: #d1fae5; color: #065f46; }
   .badge.effort-M { background: #fef3c7; color: #92400e; }
   .badge.effort-L { background: #fee2e2; color: #991b1b; }
   .badge.effort-XL { background: #fce7f3; color: #9d174d; }
-  @media (prefers-color-scheme: dark) {
-    .badge.effort-S  { background: #064e3b; color: #6ee7b7; }
-    .badge.effort-M  { background: #78350f; color: #fde68a; }
-    .badge.effort-L  { background: #7f1d1d; color: #fecaca; }
-    .badge.effort-XL { background: #831843; color: #fbcfe8; }
-  }
+    [data-theme="dark"] .badge.effort-S { background: #064e3b; color: #6ee7b7; }
+  [data-theme="dark"] .badge.effort-M { background: #78350f; color: #fde68a; }
+  [data-theme="dark"] .badge.effort-L { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .badge.effort-XL { background: #831843; color: #fbcfe8; }
   .badge.staleness { background: var(--panel-2); border-color: transparent; }
   .badge.staleness::before {
     content: ""; display: inline-block;
@@ -175,43 +299,42 @@
   .badge.stale-fresh::before      { background: #10b981; }
   .badge.stale-stale::before      { background: #ef4444; }
   .badge.stale-very-stale::before { background: #1f2937; }
-  @media (prefers-color-scheme: dark) {
-    .badge.stale-very-stale::before { background: #f5f5f4; }
-  }
+    [data-theme="dark"] .badge.stale-very-stale::before { background: #f5f5f4; }
   .badge.timing { border-color: transparent; font-weight: 500; }
   .badge.timing-today        { background: #fee2e2; color: #991b1b; }
   .badge.timing-tomorrow     { background: #fef3c7; color: #92400e; }
   .badge.timing-this-week    { background: #dbeafe; color: #1e3a8a; }
   .badge.timing-next-30-days { background: #f1f5f9; color: #475569; }
-  @media (prefers-color-scheme: dark) {
-    .badge.timing-today        { background: #7f1d1d; color: #fecaca; }
-    .badge.timing-tomorrow     { background: #78350f; color: #fde68a; }
-    .badge.timing-this-week    { background: #1e3a8a; color: #dbeafe; }
-    .badge.timing-next-30-days { background: #292524; color: #e7e5e4; }
-  }
+    [data-theme="dark"] .badge.timing-today { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .badge.timing-tomorrow { background: #78350f; color: #fde68a; }
+  [data-theme="dark"] .badge.timing-this-week { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .badge.timing-next-30-days { background: #292524; color: #e7e5e4; }
 
   /* Toolbar (filter rows) */
   .toolbar {
     display: flex; align-items: center; flex-wrap: wrap;
-    gap: 10px; padding: 8px 24px;
+    gap: 18px; padding: 6px 24px;
     border-bottom: 1px solid var(--border);
     background: var(--panel);
-    font-size: 12px; color: var(--muted);
+    font-size: 11px; color: var(--muted);
   }
-  .filter-group { display: flex; gap: 6px; align-items: center; }
-  .filter-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--muted); margin-right: 2px;
-  }
-  .filter-sep { color: var(--border); user-select: none; }
+  .filter-group { display: flex; gap: 4px; align-items: center; }
   .filter-group button {
-    font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--panel);
+    font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent; background: transparent;
     color: var(--muted); cursor: pointer;
   }
   .filter-group button:hover { color: var(--text); background: var(--panel-2); }
-  .filter-group button[data-value="all"].active {
-    background: var(--panel-2); color: var(--text); border-color: var(--border);
+  .filter-group.segmented {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px; gap: 0;
+  }
+  .filter-group.segmented button {
+    padding: 3px 11px; color: var(--muted);
+  }
+  .filter-group.segmented button.active {
+    background: var(--panel); color: var(--text); font-weight: 500;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   .filter-group[data-key="context"] button[data-value="Personal"].active {
     background: #dbeafe; color: #1e3a8a; border-color: transparent;
@@ -244,26 +367,26 @@
     background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
     font-weight: 500;
   }
-  @media (prefers-color-scheme: dark) {
-    .filter-group[data-key="context"] button[data-value="Personal"].active { background: #1e3a8a; color: #dbeafe; }
-    .filter-group[data-key="context"] button[data-value="Work"].active     { background: #4c1d95; color: #ede9fe; }
-    .filter-group[data-key="timing"] button[data-value="today"].active        { background: #7f1d1d; color: #fecaca; }
-    .filter-group[data-key="timing"] button[data-value="tomorrow"].active     { background: #78350f; color: #fde68a; }
-    .filter-group[data-key="timing"] button[data-value="this-week"].active    { background: #1e3a8a; color: #dbeafe; }
-    .filter-group[data-key="timing"] button[data-value="next-30-days"].active { background: #1c1917; color: #e7e5e4; }
-    .filter-group[data-key="staleness"] button[data-value="fresh"].active     { background: #064e3b; color: #6ee7b7; }
-    .filter-group[data-key="staleness"] button[data-value="stale"].active     { background: #7f1d1d; color: #fecaca; }
-    .filter-group[data-key="staleness"] button[data-value="very-stale"].active { background: #fafaf9; color: #1c1917; }
-  }
+    [data-theme="dark"] .filter-group[data-key="context"] button[data-value="Personal"].active { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .filter-group[data-key="context"] button[data-value="Work"].active { background: #4c1d95; color: #ede9fe; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="today"].active { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="tomorrow"].active { background: #78350f; color: #fde68a; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="this-week"].active { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-30-days"].active { background: #1c1917; color: #e7e5e4; }
+  [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="fresh"].active { background: #064e3b; color: #6ee7b7; }
+  [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="stale"].active { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="very-stale"].active { background: #fafaf9; color: #1c1917; }
 
   /* Subtask progress chip on cards */
   .badge.subtasks-chip { font-weight: 500; }
   .badge.subtasks-chip.complete {
     background: #d1fae5; color: #065f46; border-color: transparent;
   }
-  @media (prefers-color-scheme: dark) {
-    .badge.subtasks-chip.complete { background: #064e3b; color: #6ee7b7; }
+    [data-theme="dark"] .badge.subtasks-chip.complete { background: #064e3b; color: #6ee7b7; }
+  .badge.completed-chip {
+    background: #d1fae5; color: #065f46; border-color: transparent; font-weight: 500;
   }
+    [data-theme="dark"] .badge.completed-chip { background: #064e3b; color: #6ee7b7; }
   .card .del {
     position: absolute; top: 6px; right: 6px;
     border: none; background: transparent; color: var(--muted);
@@ -282,11 +405,9 @@
   .col[data-status="in-progress"] .add:hover { color: #1e3a8a; border-color: #3b82f6; }
   .col[data-status="focus"]       .add:hover { color: #9d174d; border-color: #ec4899; }
   .col[data-status="done"]        .add:hover { color: #065f46; border-color: #10b981; }
-  @media (prefers-color-scheme: dark) {
-    .col[data-status="in-progress"] .add:hover { color: #93c5fd; }
-    .col[data-status="focus"]       .add:hover { color: #fbcfe8; }
-    .col[data-status="done"]        .add:hover { color: #6ee7b7; }
-  }
+    [data-theme="dark"] .col[data-status="in-progress"] .add:hover { color: #93c5fd; }
+  [data-theme="dark"] .col[data-status="focus"]       .add:hover { color: #fbcfe8; }
+  [data-theme="dark"] .col[data-status="done"]        .add:hover { color: #6ee7b7; }
   .new-input {
     margin: 8px 10px 10px;
     display: flex; flex-direction: column; gap: 6px;
@@ -371,7 +492,20 @@
     transition: transform 0.2s ease;
     display: flex; flex-direction: column;
   }
-  .drawer-backdrop[data-open="true"] .drawer { transform: translateX(0); }
+  .drawer-backdrop[data-open="true"] .drawer:not(.expanded) { transform: translateX(0); }
+  /* Expanded ("blown up") — large centered modal with room for long-form notes */
+  .drawer.expanded {
+    top: 4vh; bottom: 4vh; right: auto; left: 50%;
+    width: min(1040px, 94vw); max-width: 94vw;
+    transform: translateX(-50%);
+    border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 16px 56px rgba(0,0,0,0.30);
+  }
+  .drawer.expanded .drawer-body { padding: 24px 36px; }
+  .drawer.expanded .desc-container { flex: 1; display: flex; flex-direction: column; }
+  .drawer.expanded .desc-rendered,
+  .drawer.expanded #drawer-description { min-height: 48vh; }
+  .drawer.expanded #drawer-expand { background: var(--panel-2); }
   .drawer-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; border-bottom: 1px solid var(--border);
@@ -475,51 +609,332 @@
   .desc-rendered ul.contains-task-list { padding-left: 1.2em; list-style: none; }
   .desc-rendered .task-list-item { display: flex; align-items: baseline; gap: 6px; }
   .desc-rendered .task-list-item input[type="checkbox"] { margin: 0; }
+  .drawer-timestamps {
+    margin-top: 24px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .drawer-timestamps .ts-row { display: flex; gap: 8px; align-items: center; }
+  .drawer-timestamps .ts-label { width: 80px; flex: 0 0 auto; }
+  .drawer-timestamps .ts-created { font-size: 14px; color: var(--text); }
+  .drawer-timestamps .ts-created .ts-label { font-weight: 600; }
+  .drawer-timestamps .ts-created-val { flex: 1 1 auto; }
+  .drawer-timestamps .ts-age {
+    margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; vertical-align: middle;
+  }
+  .drawer-timestamps .ts-age.stale-fresh { background: rgba(34,197,94,.15); color: #16a34a; }
+  .drawer-timestamps .ts-age.stale-stale { background: rgba(234,179,8,.15); color: #ca8a04; }
+  .drawer-timestamps .ts-age.stale-very-stale { background: rgba(239,68,68,.15); color: #dc2626; }
+  .drawer-timestamps .ts-reset {
+    flex: 0 0 auto; cursor: pointer; font-size: 11px;
+    padding: 3px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  }
+  .drawer-timestamps .ts-reset:hover { border-color: var(--accent, #6366f1); }
+
+  /* Focus view */
+  #focus-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
+  .focus-wrap { max-width: 1100px; margin: 0 auto; }
+  .focus-grid {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px;
+  }
+  @media (max-width: 760px) { .focus-grid { grid-template-columns: 1fr; } }
+  .focus-col {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 16px 20px;
+    min-height: 400px;
+    display: flex; flex-direction: column;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .focus-col-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 14px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .focus-col-title { font-family: var(--serif); font-size: 19px; font-weight: 600; color: var(--text); letter-spacing: -0.005em; }
+  .focus-col-count { font-size: 12px; color: var(--muted); }
+  .focus-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 8px;
+    flex: 1;
+  }
+  .focus-sections { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .focus-section {
+    padding: 6px 4px;
+    border-radius: 8px;
+    transition: background 0.12s ease;
+  }
+  .focus-section.drag-over-section { background: var(--accent-soft); }
+  .focus-section-head {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 4px 6px 8px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 600; color: var(--muted);
+  }
+  .focus-section-count {
+    background: var(--panel-2); color: var(--muted);
+    padding: 1px 7px; border-radius: 999px; font-size: 10px;
+  }
+  .focus-section-list { gap: 6px; }
+  .focus-section-empty {
+    list-style: none;
+    color: var(--muted); font-size: 11px; font-style: italic;
+    padding: 8px 12px;
+    border: 1px dashed var(--border); border-radius: 8px;
+    text-align: center;
+  }
+  .focus-card { position: relative; }
+  .focus-card.drop-before::before,
+  .focus-card.drop-after::after {
+    content: ""; position: absolute; left: 0; right: 0;
+    height: 2px; background: var(--accent); border-radius: 2px;
+    pointer-events: none;
+  }
+  .focus-card.drop-before::before { top: -4px; }
+  .focus-card.drop-after::after { bottom: -4px; }
+  .focus-col-todo .focus-col-title::before { content: "🎯 "; }
+  .focus-col-done {
+    background: linear-gradient(180deg, #ecfdf5 0%, var(--panel) 60%);
+    border-color: #a7f3d0;
+  }
+  .focus-col-done .focus-col-title { color: #065f46; }
+  .focus-col-done .focus-col-title::before { content: "✓ "; color: #10b981; }
+  .focus-col.drag-over {
+    border-color: #10b981;
+    background: #d1fae5;
+  }
+    [data-theme="dark"] .focus-col-done {
+      background: linear-gradient(180deg, #064e3b40 0%, var(--panel) 60%);
+      border-color: #065f46;
+    }
+  [data-theme="dark"] .focus-col-done .focus-col-title { color: #6ee7b7; }
+  [data-theme="dark"] .focus-col.drag-over { background: #064e3b; }
+  .focus-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    cursor: grab;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.18s ease;
+  }
+  .focus-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05); }
+  .focus-card:active { cursor: grabbing; }
+  .focus-card.dragging { opacity: 0.4; }
+  .focus-card-title {
+    font-size: 14px; color: var(--text); line-height: 1.4;
+    word-break: break-word;
+  }
+  .focus-card-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .focus-col-done .focus-card-title {
+    text-decoration: line-through; color: var(--muted);
+  }
+  .focus-empty {
+    text-align: center; color: var(--muted); font-size: 13px;
+    padding: 30px 12px;
+  }
+
+  /* View toggle (header) */
+  .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .view-toggle button {
+    border: none; background: var(--panel); color: var(--muted);
+    padding: 5px 12px; font-size: 12px; border-radius: 0; cursor: pointer;
+  }
+  .view-toggle button.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+  .view-toggle button + button { border-left: 1px solid var(--border); }
+
+  /* Stats strip (above board) */
+  .stats-strip {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 24px; font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+  }
+  .stats-strip .stat { display: inline-flex; align-items: center; gap: 6px; }
+  .stats-strip .stat strong { color: var(--text); font-weight: 600; }
+  .stats-strip .stat .points { color: var(--accent); font-weight: 600; }
+  .stats-strip .stat-sep { color: var(--border); }
+  .stats-strip .breakdown { color: var(--muted); }
+  .stats-strip .breakdown span { margin-right: 8px; }
+  .stats-strip .untagged {
+    margin-left: auto;
+    background: #fef3c7; color: #92400e;
+    border: 1px solid transparent; border-radius: 999px;
+    padding: 3px 10px; cursor: pointer; font-weight: 500;
+  }
+  .stats-strip .untagged:hover { filter: brightness(0.97); }
+  .stats-strip .untagged.active { background: #f59e0b; color: #fff; }
+  .stats-strip .untagged.zero { background: transparent; color: var(--muted); cursor: default; border-color: var(--border); }
+    [data-theme="dark"] .stats-strip .untagged { background: #78350f; color: #fde68a; }
+  [data-theme="dark"] .stats-strip .untagged.active { background: #f59e0b; color: #0c0a09; }
+
+  /* Card highlight when needs-effort filter active */
+  .card.needs-effort { border-color: #f59e0b; }
+  .card.needs-effort::before {
+    content: "?"; position: absolute; top: -6px; left: -6px;
+    width: 16px; height: 16px; border-radius: 999px;
+    background: #f59e0b; color: #fff;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Stats page */
+  #stats-page {
+    flex: 1; min-height: 0; overflow-y: auto;
+    padding: 24px 32px;
+  }
+  .stats-page-inner { max-width: 920px; margin: 0 auto; }
+  .stats-page-inner h2 {
+    margin: 0 0 4px; font-size: 22px; font-weight: 600;
+    font-family: var(--serif); letter-spacing: -0.005em;
+  }
+  .stats-page-inner .subtitle {
+    margin: 0 0 24px; color: var(--muted); font-size: 13px;
+  }
+  .summary-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px; margin-bottom: 28px;
+  }
+  .summary-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+  .summary-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .summary-card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .summary-card .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .stats-section {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px;
+  }
+  .stats-section h3 {
+    margin: 0 0 12px; font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+  }
+
+  .points-chart {
+    display: flex; align-items: flex-end; gap: 8px;
+    height: 160px; padding: 8px 0;
+  }
+  .points-chart .bar-col {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    min-width: 0;
+  }
+  .points-chart .bar-wrap {
+    width: 100%; flex: 1;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .points-chart .bar {
+    width: 70%; max-width: 36px;
+    background: var(--accent); border-radius: 4px 4px 0 0;
+    min-height: 2px;
+    transition: height 0.2s ease;
+  }
+  .points-chart .bar.current { background: var(--accent); opacity: 1; }
+  .points-chart .bar:not(.current) { opacity: 0.45; }
+  .points-chart .x-label {
+    font-size: 10px; color: var(--muted);
+    white-space: nowrap; overflow: hidden;
+  }
+  .points-chart .bar-value { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+  .weekday-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  @media (max-width: 720px) { .weekday-grid { grid-template-columns: 1fr; } }
+  .weekday-grid .chart-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 600; margin-bottom: 6px;
+  }
+  .section-sub {
+    font-size: 11px; font-weight: 400; color: var(--muted);
+    text-transform: none; letter-spacing: 0; margin-left: 6px;
+  }
+
+  table.weeks-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  table.weeks-table th, table.weeks-table td {
+    text-align: left; padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.weeks-table th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); font-weight: 500;
+  }
+  table.weeks-table tr.current-week { background: var(--accent-soft); }
+  table.weeks-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.weeks-table td .points { color: var(--accent); font-weight: 600; }
+  table.weeks-table td .breakdown { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
-  <header hidden>
-    <h1>Kanban</h1>
-    <div class="actions">
-      <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
-      <button class="ghost" id="clear-done" title="Remove all completed tasks">Clear done</button>
-      <button class="ghost" id="sign-out" title="Sign out">Sign out</button>
+  <nav class="sidebar" id="sidebar" hidden>
+    <div class="sidebar-brand"><span class="brand-dot"></span> Agent Home</div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Task Management</div>
+      <button class="sidebar-item active" data-target="kanban"><span class="icon">📋</span> Kanban</button>
     </div>
-  </header>
-  <div class="toolbar" id="toolbar" hidden>
-    <div class="filter-group" data-key="groupBy">
-      <span class="filter-label">Group</span>
-      <button data-value="status" class="active">Status</button>
-      <button data-value="timing">Due</button>
-      <button data-value="staleness">Age</button>
-      <button data-value="context">Context</button>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Personal Intelligence</div>
+      <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Stats</button>
     </div>
-    <span class="filter-sep">|</span>
-    <div class="filter-group" data-key="context">
-      <span class="filter-label">Context</span>
-      <button data-value="all" class="active">All</button>
-      <button data-value="Personal">Personal</button>
-      <button data-value="Work">Work</button>
+  </nav>
+  <div class="app-main">
+    <header hidden>
+      <div class="title-group">
+        <div class="title-stack">
+          <div class="eyebrow">Agent Home</div>
+          <h1 id="page-title">Kanban</h1>
+        </div>
+        <button class="focus-btn" id="focus-btn" title="Switch to Focus view">
+          <span>🎯 Focus</span>
+          <span class="focus-count" id="focus-btn-count">0</span>
+        </button>
+        <div class="ctx-group" id="header-ctx">
+          <button class="ctx-btn ctx-work" data-context="Work" title="Filter to Work">
+            <span>💼 Work</span>
+          </button>
+          <button class="ctx-btn ctx-personal" data-context="Personal" title="Filter to Personal">
+            <span>🏠 Personal</span>
+          </button>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
+        <button class="ghost" id="theme-toggle" title="Theme">🖥️</button>
+        <button class="ghost" id="clear-done" title="Archive all completed tasks — they leave the board but stay in capacity stats">Clear done</button>
+        <button class="ghost" id="sign-out" title="Sign out">Sign out</button>
+      </div>
+    </header>
+    <div class="toolbar" id="toolbar" hidden>
+      <div class="filter-group segmented" data-key="groupBy">
+        <button data-value="status" class="active">Status</button>
+        <button data-value="timing">Due</button>
+        <button data-value="staleness">Age</button>
+        <button data-value="context">Context</button>
+      </div>
+      <div class="filter-group" data-key="timing">
+        <button data-value="today">Today</button>
+        <button data-value="tomorrow">Tomorrow</button>
+        <button data-value="this-week">This Week</button>
+        <button data-value="next-30-days">Next 30d</button>
+      </div>
+      <div class="filter-group" data-key="staleness">
+        <button data-value="fresh">Fresh</button>
+        <button data-value="stale">Stale</button>
+        <button data-value="very-stale">Very Stale</button>
+      </div>
     </div>
-    <span class="filter-sep">|</span>
-    <div class="filter-group" data-key="timing">
-      <span class="filter-label">Due</span>
-      <button data-value="all" class="active">All</button>
-      <button data-value="today">Today</button>
-      <button data-value="tomorrow">Tomorrow</button>
-      <button data-value="this-week">This Week</button>
-      <button data-value="next-30-days">Next 30d</button>
-    </div>
-    <span class="filter-sep">|</span>
-    <div class="filter-group" data-key="staleness">
-      <span class="filter-label">Age</span>
-      <button data-value="all" class="active">All</button>
-      <button data-value="fresh">Fresh</button>
-      <button data-value="stale">Stale</button>
-      <button data-value="very-stale">Very Stale</button>
-    </div>
+    <div class="stats-strip" id="stats-strip" hidden></div>
+    <main id="board" hidden></main>
+    <section id="focus-view" hidden></section>
+    <section id="stats-page" hidden></section>
   </div>
-  <main id="board" hidden></main>
 
   <div id="auth" class="auth-overlay">
     <div class="auth-card">
@@ -538,6 +953,7 @@
     <aside class="drawer" id="drawer" aria-hidden="true">
       <div class="drawer-head">
         <input type="text" class="title-input" id="drawer-title" placeholder="Title" />
+        <button class="ghost" id="drawer-expand" title="Expand — full-screen room for notes (E)" aria-label="Expand">⤢</button>
         <button class="ghost" id="drawer-close" title="Close (Esc)">✕</button>
       </div>
       <div class="drawer-body">
@@ -593,6 +1009,7 @@
           <div class="desc-rendered" id="drawer-description-view" tabindex="0"></div>
           <textarea id="drawer-description" placeholder="Markdown: **bold**, _italic_, [link](url), - list, ## heading" hidden></textarea>
         </div>
+        <div class="drawer-timestamps" id="drawer-timestamps"></div>
       </div>
     </aside>
   </div>
@@ -605,13 +1022,19 @@
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
 
-  const FOCUS_CAP = 5;
+  const FOCUS_CAP = 5;  // per context (Work / Personal each get their own cap)
+  // Count live focus tasks in a given context — the cap is enforced per-context.
+  function focusCountFor(ctx) {
+    return state.tasks.filter(t => t.status === "focus" && !t.archived && t.context === ctx).length;
+  }
   const TIMING_LABEL = {
     "today": "Today",
     "tomorrow": "Tomorrow",
     "this-week": "This Week",
     "next-30-days": "Next 30d",
   };
+  const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
+  const HISTORY_WEEKS = 12;
 
   const GROUP_BY = {
     status: {
@@ -666,24 +1089,82 @@
 
   let currentUser = null;
   let focusedTaskId = null;
+  const FOCUS_ORDER_KEY = 'kanban.focusOrder';
+  function loadFocusOrder() {
+    try {
+      const v = JSON.parse(localStorage.getItem(FOCUS_ORDER_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  }
+  function saveFocusOrder() {
+    try { localStorage.setItem(FOCUS_ORDER_KEY, JSON.stringify(state.focusOrder)); } catch {}
+  }
+
   let state = {
     tasks: [],
-    filter: { context: "all", timing: "all", staleness: "all" },
+    filter: { context: "all", timing: "all", staleness: "all", needsEffort: false },
     groupBy: "status",
+    view: "board",
+    focusOrder: loadFocusOrder(),
   };
 
   // === Auth ===
   function showAuth() {
     document.getElementById('auth').hidden = false;
     document.querySelector('header').hidden = true;
+    document.getElementById('sidebar').hidden = true;
     document.getElementById('toolbar').hidden = true;
     document.getElementById('board').hidden = true;
   }
   function showApp() {
     document.getElementById('auth').hidden = true;
     document.querySelector('header').hidden = false;
-    document.getElementById('toolbar').hidden = false;
-    document.getElementById('board').hidden = false;
+    document.getElementById('sidebar').hidden = false;
+    applyView();
+  }
+
+  function applyView() {
+    const isBoard = state.view === 'board';
+    const isFocus = state.view === 'focus';
+    const isStats = state.view === 'stats';
+    const isKanbanPage = isBoard || isFocus;
+
+    document.getElementById('toolbar').hidden = !isBoard;
+    document.getElementById('stats-strip').hidden = !isBoard;
+    document.getElementById('board').hidden = !isBoard;
+    document.getElementById('focus-view').hidden = !isFocus;
+    document.getElementById('stats-page').hidden = !isStats;
+
+    document.getElementById('page-title').textContent = isStats ? 'Task Management' : 'Kanban';
+    const focusBtn = document.getElementById('focus-btn');
+    focusBtn.hidden = !isKanbanPage;
+    focusBtn.classList.toggle('active', isFocus);
+
+    document.querySelectorAll('#sidebar .sidebar-item').forEach(b => {
+      const isActive = (b.dataset.target === 'kanban' && isKanbanPage)
+                    || (b.dataset.target === 'stats' && isStats);
+      b.classList.toggle('active', isActive);
+    });
+
+    updateFocusBtnCount();
+    syncHeaderCtx();
+
+    if (isBoard) {
+      renderStatsStrip();
+      render();
+    } else if (isFocus) {
+      renderFocus();
+    } else {
+      renderStatsPage();
+    }
+  }
+
+  function updateFocusBtnCount() {
+    const ctx = state.filter.context;
+    const n = state.tasks.filter(t =>
+      t.status === 'focus' && (ctx === 'all' || t.context === ctx)
+    ).length;
+    document.getElementById('focus-btn-count').textContent = n;
   }
 
   async function initAuth() {
@@ -704,7 +1185,9 @@
         }
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
-        state = { tasks: [] };
+        state.tasks = [];
+        state.filter = { context: "all", timing: "all", staleness: "all", needsEffort: false };
+        state.view = "board";
         showAuth();
       }
     });
@@ -747,6 +1230,8 @@
       staleness: computeStaleness(row.created_at),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedAt: row.completed_at,
+      archived: !!row.archived,
     };
   }
   function patchToRow(patch) {
@@ -760,6 +1245,8 @@
     if ('timing' in patch) row.timing = patch.timing;
     if ('effort' in patch) row.effort = patch.effort;
     if ('subtasks' in patch) row.subtasks = patch.subtasks;
+    if ('archived' in patch) row.archived = patch.archived;
+    if ('createdAt' in patch) row.created_at = patch.createdAt;
     return row;
   }
   function computeStaleness(iso) {
@@ -784,13 +1271,21 @@
     }
     state.tasks = data.map(rowToTask);
     setStatus("");
-    render();
+    if (state.view === 'stats') {
+      renderStatsPage();
+    } else {
+      renderStatsStrip();
+      render();
+    }
   }
 
-  async function createTaskRow({ title, status, context, source }) {
+  async function createTaskRow({ title, status, context, source, timing }) {
+    const row = { title, status, context, source, user_id: currentUser.id };
+    if (timing) row.timing = timing;
+    if (status === 'focus' && !row.timing) row.timing = 'today';
     const { data, error } = await supabase
       .from('tasks')
-      .insert({ title, status, context, source, user_id: currentUser.id })
+      .insert(row)
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -813,10 +1308,44 @@
     if (error) throw new Error(error.message);
   }
 
+  // Re-insert a previously-deleted task verbatim (used by undo).
+  async function insertTaskRow(task) {
+    const row = {
+      id: task.id, user_id: currentUser.id, title: task.title,
+      status: task.status, context: task.context || null, source: task.source || null,
+      source_link: task.sourceLink || null, description: task.description || null,
+      timing: task.timing || null, effort: task.effort || null,
+      subtasks: task.subtasks || [], archived: !!task.archived,
+      created_at: task.createdAt, updated_at: task.updatedAt,
+    };
+    const { data, error } = await supabase.from('tasks').insert(row).select().single();
+    if (error) throw new Error(error.message);
+    let result = rowToTask(data);
+    // The set_completed_at trigger may rewrite completed_at on insert; restore the original.
+    if ((task.completedAt || null) !== (data.completed_at || null)) {
+      const { data: d2 } = await supabase.from('tasks')
+        .update({ completed_at: task.completedAt || null }).eq('id', task.id).select().single();
+      if (d2) result = rowToTask(d2);
+    }
+    return result;
+  }
+  async function restoreTask(task) {
+    const restored = await insertTaskRow(task);
+    state.tasks.unshift(restored);
+    afterMutation(restored.id);
+  }
+
   // === View helpers ===
   function visibleTasks() {
-    const { context, timing, staleness } = state.filter;
+    const { context, timing, staleness, needsEffort } = state.filter;
     return state.tasks.filter(t => {
+      if (t.archived) return false;
+      if (needsEffort) {
+        if (t.context !== "Work") return false;
+        if (t.status === "done") return false;
+        if (t.effort) return false;
+        return true;
+      }
       if (context !== "all" && t.context !== context) return false;
       if (timing !== "all" && t.timing !== timing) return false;
       if (staleness !== "all" && (t.staleness?.level || null) !== staleness) return false;
@@ -873,9 +1402,20 @@
       colEl.className = "col";
       if (state.groupBy === "status") colEl.dataset.status = col.id;
       const isFocusCol = state.groupBy === "status" && col.id === "focus";
-      const overCap = isFocusCol && tasks.length > FOCUS_CAP;
+      let overCap = false;
+      let countLabel = `${tasks.length}`;
+      if (isFocusCol) {
+        if (state.filter.context !== "all") {
+          // Viewing a single context — tasks are already scoped to it.
+          overCap = tasks.length > FOCUS_CAP;
+          countLabel = `${tasks.length}/${FOCUS_CAP}`;
+        } else {
+          // "All" view — cap is per-context, so flag if any one context is over.
+          overCap = focusCountFor("Work") > FOCUS_CAP || focusCountFor("Personal") > FOCUS_CAP;
+          countLabel = `${tasks.length}`;
+        }
+      }
       if (overCap) colEl.classList.add("over-cap");
-      const countLabel = isFocusCol ? `${tasks.length}/${FOCUS_CAP}` : `${tasks.length}`;
       const addBtn = state.groupBy === "status"
         ? `<button class="add" data-add="${col.id}">+ Add task</button>` : "";
       colEl.innerHTML = `
@@ -911,9 +1451,9 @@
           if (!task) return;
           if (grouping.extract(task) === col.id) return;
           if (state.groupBy === "status" && col.id === "focus") {
-            const focusCount = state.tasks.filter(t => t.status === "focus").length;
-            if (focusCount >= FOCUS_CAP) {
-              setStatus(`Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+            const ctx = task.context;
+            if (focusCountFor(ctx) >= FOCUS_CAP) {
+              setStatus(`${ctx || "Uncategorized"} Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
               setTimeout(() => setStatus(""), 3000);
               return;
             }
@@ -933,9 +1473,254 @@
     }
   }
 
+  const STALENESS_RANK = { "very-stale": 3, "stale": 2, "fresh": 1 };
+
+  const EFFORT_GROUPS = [
+    { key: 'S',  label: 'Small' },
+    { key: 'M',  label: 'Medium' },
+    { key: 'L',  label: 'Large' },
+    { key: 'XL', label: 'XL' },
+    { key: null, label: 'No estimate' },
+  ];
+
+  function syncFocusOrder(focusTasks) {
+    const focusIds = new Set(focusTasks.map(t => t.id));
+    let dirty = false;
+    const filtered = state.focusOrder.filter(id => {
+      if (focusIds.has(id)) return true;
+      dirty = true;
+      return false;
+    });
+    const known = new Set(filtered);
+    for (const t of focusTasks) {
+      if (!known.has(t.id)) { filtered.push(t.id); dirty = true; }
+    }
+    state.focusOrder = filtered;
+    if (dirty) saveFocusOrder();
+  }
+
+  function sortByFocusOrder(tasks) {
+    const idx = new Map(state.focusOrder.map((id, i) => [id, i]));
+    return tasks.slice().sort((a, b) => {
+      const ai = idx.has(a.id) ? idx.get(a.id) : Infinity;
+      const bi = idx.has(b.id) ? idx.get(b.id) : Infinity;
+      return ai - bi;
+    });
+  }
+
+  function renderFocus() {
+    const root = document.getElementById('focus-view');
+    const ctx = state.filter.context;
+    const inContext = (t) => ctx === "all" || t.context === ctx;
+    // Sync + sort against the FULL focus set so the saved ordering for the
+    // hidden context isn't pruned, then narrow to the active context for display.
+    const allFocus = state.tasks.filter(t => t.status === 'focus');
+    syncFocusOrder(allFocus);
+    let focusTasks = sortByFocusOrder(allFocus).filter(inContext);
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const doneTasks = state.tasks
+      .filter(t => t.status === 'done' && !t.archived && inContext(t) && t.completedAt && new Date(t.completedAt) >= todayStart)
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+    const cardHtml = (task) => {
+      const badges = [];
+      if (task.timing) {
+        const label = TIMING_LABEL[task.timing] || task.timing;
+        badges.push(`<span class="badge timing timing-${task.timing}">${escapeHtml(label)}</span>`);
+      }
+      if (task.staleness) {
+        badges.push(`<span class="badge staleness stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`);
+      }
+      return `
+        <li class="focus-card" draggable="true" data-id="${escapeHtml(task.id)}">
+          <div class="focus-card-title">${escapeHtml(task.title)}</div>
+          ${badges.length ? `<div class="focus-card-badges">${badges.join('')}</div>` : ''}
+        </li>
+      `;
+    };
+
+    const groups = new Map(EFFORT_GROUPS.map(g => [g.key, []]));
+    for (const t of focusTasks) {
+      const key = ['S','M','L','XL'].includes(t.effort) ? t.effort : null;
+      groups.get(key).push(t);
+    }
+
+    const focusSectionsHtml = EFFORT_GROUPS.map(g => {
+      const tasks = groups.get(g.key);
+      const dataEffort = g.key === null ? '' : g.key;
+      const body = tasks.length
+        ? tasks.map(cardHtml).join('')
+        : `<li class="focus-section-empty">drop here</li>`;
+      return `
+        <div class="focus-section" data-effort="${dataEffort}">
+          <div class="focus-section-head">
+            <span class="focus-section-label">${g.label}</span>
+            <span class="focus-section-count">${tasks.length}</span>
+          </div>
+          <ul class="focus-list focus-section-list">${body}</ul>
+        </div>
+      `;
+    }).join('');
+
+    const doneList = doneTasks.length
+      ? doneTasks.map(t => `
+        <li class="focus-card done" draggable="true" data-id="${escapeHtml(t.id)}">
+          <div class="focus-card-title">${escapeHtml(t.title)}</div>
+        </li>
+      `).join('')
+      : `<div class="focus-empty">Drag tasks here to complete them.</div>`;
+
+    root.innerHTML = `
+      <div class="focus-wrap">
+        <div class="focus-grid">
+          <div class="focus-col focus-col-todo" data-status="focus">
+            <div class="focus-col-head">
+              <div class="focus-col-title">Focus</div>
+              <div class="focus-col-count">${focusTasks.length} ${focusTasks.length === 1 ? 'task' : 'tasks'}</div>
+            </div>
+            <div class="focus-sections">${focusSectionsHtml}</div>
+          </div>
+          <div class="focus-col focus-col-done" data-status="done">
+            <div class="focus-col-head">
+              <div class="focus-col-title">Done today</div>
+              <div class="focus-col-count">${doneTasks.length}</div>
+            </div>
+            <ul class="focus-list">${doneList}</ul>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const clearIndicators = () => {
+      root.querySelectorAll('.drop-before, .drop-after, .drag-over-section, .drag-over')
+        .forEach(el => el.classList.remove('drop-before', 'drop-after', 'drag-over-section', 'drag-over'));
+    };
+
+    root.querySelectorAll('.focus-card').forEach(el => {
+      const id = el.dataset.id;
+      el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', id);
+        e.dataTransfer.effectAllowed = 'move';
+        el.classList.add('dragging');
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        clearIndicators();
+      });
+      el.addEventListener('click', () => {
+        if (el.classList.contains('dragging')) return;
+        openDrawer(id);
+      });
+    });
+
+    root.querySelectorAll('.focus-col-todo .focus-card').forEach(el => {
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = el.getBoundingClientRect();
+        const isAbove = (e.clientY - rect.top) < rect.height / 2;
+        clearIndicators();
+        el.classList.add(isAbove ? 'drop-before' : 'drop-after');
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const draggedId = e.dataTransfer.getData('text/plain');
+        const targetId = el.dataset.id;
+        const rect = el.getBoundingClientRect();
+        const isAbove = (e.clientY - rect.top) < rect.height / 2;
+        const targetEffort = el.closest('.focus-section')?.dataset.effort || null;
+        clearIndicators();
+        if (!draggedId) return;
+        const dragged = state.tasks.find(t => t.id === draggedId);
+        if (!dragged) return;
+        if (dragged.status !== 'focus') {
+          patchTask(draggedId, { status: 'focus' });
+          return;
+        }
+        reorderFocus(draggedId, targetId, isAbove, targetEffort || null);
+      });
+    });
+
+    root.querySelectorAll('.focus-col-todo .focus-section').forEach(sec => {
+      const effort = sec.dataset.effort || null;
+      sec.addEventListener('dragover', (e) => {
+        if (e.target.closest('.focus-card')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        sec.classList.add('drag-over-section');
+      });
+      sec.addEventListener('dragleave', (e) => {
+        if (!sec.contains(e.relatedTarget)) sec.classList.remove('drag-over-section');
+      });
+      sec.addEventListener('drop', (e) => {
+        if (e.target.closest('.focus-card')) return;
+        e.preventDefault();
+        sec.classList.remove('drag-over-section');
+        const draggedId = e.dataTransfer.getData('text/plain');
+        if (!draggedId) return;
+        const dragged = state.tasks.find(t => t.id === draggedId);
+        if (!dragged) return;
+        if (dragged.status !== 'focus') {
+          const patch = { status: 'focus' };
+          if (effort !== null) patch.effort = effort;
+          patchTask(draggedId, patch);
+          return;
+        }
+        reorderFocus(draggedId, null, false, effort);
+      });
+    });
+
+    const doneCol = root.querySelector('.focus-col-done');
+    doneCol.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      doneCol.classList.add('drag-over');
+    });
+    doneCol.addEventListener('dragleave', (e) => {
+      if (!doneCol.contains(e.relatedTarget)) doneCol.classList.remove('drag-over');
+    });
+    doneCol.addEventListener('drop', (e) => {
+      e.preventDefault();
+      doneCol.classList.remove('drag-over');
+      const id = e.dataTransfer.getData('text/plain');
+      if (!id) return;
+      const task = state.tasks.find(t => t.id === id);
+      if (!task || task.status === 'done') return;
+      patchTask(id, { status: 'done' });
+    });
+  }
+
+  function reorderFocus(draggedId, targetId, insertAbove, targetEffort) {
+    const dragged = state.tasks.find(t => t.id === draggedId);
+    if (!dragged) return;
+
+    let arr = state.focusOrder.filter(x => x !== draggedId);
+    if (targetId == null) {
+      arr.push(draggedId);
+    } else {
+      const idx = arr.indexOf(targetId);
+      if (idx === -1) arr.push(draggedId);
+      else arr.splice(insertAbove ? idx : idx + 1, 0, draggedId);
+    }
+    state.focusOrder = arr;
+    saveFocusOrder();
+
+    const currentEffort = ['S','M','L','XL'].includes(dragged.effort) ? dragged.effort : null;
+    if (targetEffort !== currentEffort) {
+      patchTask(draggedId, { effort: targetEffort });
+    } else {
+      renderFocus();
+    }
+  }
+
   function renderCard(task) {
     const el = document.createElement("article");
     el.className = "card";
+    if (state.filter.needsEffort) el.classList.add("needs-effort");
     el.draggable = true;
     el.dataset.id = task.id;
     const badges = [];
@@ -964,11 +1749,14 @@
       const complete = done === total ? "complete" : "";
       badges.push(`<span class="badge subtasks-chip ${complete}">✓ ${done}/${total}</span>`);
     }
+    if (task.status === "done" && task.completedAt) {
+      badges.push(`<span class="badge completed-chip" title="Completed ${escapeHtml(formatFullDate(task.completedAt))}">✓ Done ${escapeHtml(formatShortDate(task.completedAt))}</span>`);
+    }
     el.innerHTML = `
       <button class="del" title="Delete">×</button>
       <div class="title" tabindex="0">${escapeHtml(task.title)}</div>
       ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
-      <div class="meta"><span>${formatDate(task.updatedAt)}</span></div>
+      <div class="meta"><span class="meta-created" title="Created ${escapeHtml(formatFullDate(task.createdAt))}">Created ${escapeHtml(formatShortDate(task.createdAt))}</span><span>${formatDate(task.updatedAt)}</span></div>
     `;
     el.addEventListener("click", (e) => {
       if (e.target.closest(".del")) return;
@@ -1046,6 +1834,33 @@
     updateSubtasksProgress();
   }
 
+  function renderTimestamps() {
+    const task = state.tasks.find(t => t.id === drawerTaskId);
+    const el = document.getElementById('drawer-timestamps');
+    if (!task) { el.innerHTML = ""; return; }
+    const rows = [];
+    if (task.createdAt) {
+      const age = task.staleness
+        ? `<span class="ts-age stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`
+        : "";
+      rows.push(`<div class="ts-row ts-created">
+        <span class="ts-label">Created</span>
+        <span class="ts-created-val">${escapeHtml(formatFullDate(task.createdAt))} ${age}</span>
+        <button class="ts-reset" id="reset-staleness" title="Reset staleness — set Created to now">↻ Reset</button>
+      </div>`);
+    }
+    if (task.completedAt) {
+      rows.push(`<div class="ts-row"><span class="ts-label">Completed</span><span>${escapeHtml(formatFullDate(task.completedAt))}</span></div>`);
+    }
+    el.innerHTML = rows.join("");
+    const resetBtn = document.getElementById('reset-staleness');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        patchTask(task.id, { createdAt: now() });
+      });
+    }
+  }
+
   function updateSubtasksProgress() {
     const task = state.tasks.find(t => t.id === drawerTaskId);
     if (!task) return;
@@ -1075,6 +1890,7 @@
     renderDescriptionView(task.description || '');
 
     renderSubtasks();
+    renderTimestamps();
 
     document.getElementById('drawer-backdrop').dataset.open = 'true';
     document.getElementById('drawer').setAttribute('aria-hidden', 'false');
@@ -1189,9 +2005,21 @@
     document.getElementById('subtask-add').addEventListener('click', addSubtask);
 
     document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-expand').addEventListener('click', toggleDrawerExpand);
     document.getElementById('drawer-backdrop').addEventListener('click', (e) => {
       if (e.target.id === 'drawer-backdrop') closeDrawer();
     });
+  }
+
+  function toggleDrawerExpand() {
+    const drawer = document.getElementById('drawer');
+    const expanded = drawer.classList.toggle('expanded');
+    const btn = document.getElementById('drawer-expand');
+    btn.textContent = expanded ? '⤡' : '⤢';
+    btn.title = expanded ? 'Collapse (E)' : 'Expand — full-screen room for notes (E)';
+    // If the description editor is open, re-fit it to the new height.
+    const ta = document.getElementById('drawer-description');
+    if (ta && !ta.hidden) autoResizeTextarea(ta);
   }
 
   function addSubtask() {
@@ -1229,11 +2057,17 @@
       const v = ta.value.trim();
       if (!v) return cancel();
       const ctx = state.filter.context === "Work" ? "Work" : "Personal";
+      const timing = (state.filter.timing && state.filter.timing !== "all") ? state.filter.timing : undefined;
       ta.disabled = true;
       try {
-        const created = await createTaskRow({ title: v, status, context: ctx, source: "Manual" });
+        const created = await createTaskRow({ title: v, status, context: ctx, source: "Manual", timing });
         state.tasks.unshift(created);
         render();
+        recordUndo({
+          label: `add "${truncate(created.title)}"`,
+          undo: () => deleteTask(created.id),
+          redo: () => restoreTask(created),
+        });
       } catch (e) {
         ta.disabled = false;
         alert("Could not add task: " + e.message);
@@ -1260,23 +2094,345 @@
     if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
   }
+  function formatShortDate(iso) {
+    return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  function formatFullDate(iso) {
+    return new Date(iso).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+
+  // === Stats ===
+  function startOfWeek(d) {
+    // Monday-anchored week, local time
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    const day = x.getDay(); // 0=Sun..6=Sat
+    const diff = (day === 0 ? -6 : 1 - day); // back to Monday
+    x.setDate(x.getDate() + diff);
+    return x;
+  }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function formatWeekRange(weekStart) {
+    const end = addDays(weekStart, 6);
+    const sameMonth = weekStart.getMonth() === end.getMonth();
+    const fmt = (d) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+    return sameMonth
+      ? `${weekStart.toLocaleDateString([], { month: "short" })} ${weekStart.getDate()}–${end.getDate()}`
+      : `${fmt(weekStart)} – ${fmt(end)}`;
+  }
+  function effortPoints(effort) { return POINTS[effort] || 0; }
+
+  function workTasksCompletedInRange(start, end) {
+    return state.tasks.filter(t => {
+      if (t.context !== "Work") return false;
+      if (!t.completedAt) return false;
+      const c = new Date(t.completedAt);
+      return c >= start && c < end;
+    });
+  }
+
+  const WEEKDAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+  function weekdayAverages() {
+    const currentStart = startOfWeek(new Date());
+    const points = [0,0,0,0,0,0,0];
+    const counts = [0,0,0,0,0,0,0];
+    const N = HISTORY_WEEKS - 1; // exclude current (in-progress) week
+    for (let i = 1; i <= N; i++) {
+      const start = addDays(currentStart, -7 * i);
+      const end   = addDays(start, 7);
+      for (const t of workTasksCompletedInRange(start, end)) {
+        const d = new Date(t.completedAt);
+        const idx = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+        counts[idx] += 1;
+        points[idx] += effortPoints(t.effort);
+      }
+    }
+    return {
+      pointsAvg: points.map(p => p / N),
+      countAvg:  counts.map(c => c / N),
+      weeksObserved: N,
+    };
+  }
+
+  function summarize(tasks) {
+    const byEffort = { S: 0, M: 0, L: 0, XL: 0, untagged: 0 };
+    let points = 0;
+    for (const t of tasks) {
+      if (t.effort && byEffort.hasOwnProperty(t.effort)) {
+        byEffort[t.effort]++;
+        points += effortPoints(t.effort);
+      } else {
+        byEffort.untagged++;
+      }
+    }
+    return { count: tasks.length, points, byEffort };
+  }
+
+  function untaggedWorkOpenCount() {
+    return state.tasks.filter(t => t.context === "Work" && t.status !== "done" && !t.effort).length;
+  }
+
+  function renderStatsStrip() {
+    const el = document.getElementById('stats-strip');
+    if (!el || el.hidden) return;
+    const ws = startOfWeek(new Date());
+    const we = addDays(ws, 7);
+    const tasks = workTasksCompletedInRange(ws, we);
+    const s = summarize(tasks);
+    const breakdownParts = ["S", "M", "L", "XL"]
+      .filter(k => s.byEffort[k] > 0)
+      .map(k => `<span>${k}:${s.byEffort[k]}</span>`);
+    if (s.byEffort.untagged > 0) breakdownParts.push(`<span>?:${s.byEffort.untagged}</span>`);
+    const untagged = untaggedWorkOpenCount();
+    const isFilter = state.filter.needsEffort;
+    const untaggedHtml = untagged > 0
+      ? `<button class="untagged ${isFilter ? 'active' : ''}" id="untagged-pill">${isFilter ? `Showing ${untagged} untagged · clear` : `⚠ ${untagged} untagged`}</button>`
+      : `<span class="untagged zero">All work tasks tagged ✓</span>`;
+    el.innerHTML = `
+      <span class="stat"><span>This week (Work):</span> <strong>${s.count}</strong> done</span>
+      <span class="stat-sep">·</span>
+      <span class="stat"><span class="points">${s.points}</span> pts</span>
+      ${breakdownParts.length ? `<span class="stat-sep">·</span><span class="breakdown">${breakdownParts.join("")}</span>` : ""}
+      ${untaggedHtml}
+    `;
+    const pill = document.getElementById('untagged-pill');
+    if (pill) {
+      pill.addEventListener('click', () => {
+        state.filter.needsEffort = !state.filter.needsEffort;
+        renderStatsStrip();
+        render();
+      });
+    }
+  }
+
+  function renderStatsPage() {
+    const el = document.getElementById('stats-page');
+    const today = new Date();
+    const currentStart = startOfWeek(today);
+    const weeks = [];
+    for (let i = 0; i < HISTORY_WEEKS; i++) {
+      const start = addDays(currentStart, -7 * i);
+      const end = addDays(start, 7);
+      const tasks = workTasksCompletedInRange(start, end);
+      weeks.push({ start, end, ...summarize(tasks) });
+    }
+
+    const current = weeks[0];
+    const prior = weeks.slice(1).filter(w => w.count > 0);
+    const avgPoints = prior.length ? (prior.reduce((a, w) => a + w.points, 0) / prior.length) : 0;
+    const avgCount = prior.length ? (prior.reduce((a, w) => a + w.count, 0) / prior.length) : 0;
+    const bestWeek = weeks.reduce((b, w) => w.points > b.points ? w : b, weeks[0]);
+
+    const maxPoints = Math.max(1, ...weeks.map(w => w.points));
+    const chartWeeks = [...weeks].reverse(); // oldest → newest
+    const chartHtml = chartWeeks.map(w => {
+      const h = (w.points / maxPoints) * 100;
+      const isCurrent = w.start.getTime() === currentStart.getTime();
+      const label = `${w.start.toLocaleDateString([], { month: "numeric", day: "numeric" })}`;
+      return `
+        <div class="bar-col" title="${formatWeekRange(w.start)} · ${w.count} done · ${w.points} pts">
+          <div class="bar-value">${w.points || ""}</div>
+          <div class="bar-wrap"><div class="bar ${isCurrent ? 'current' : ''}" style="height:${h}%"></div></div>
+          <div class="x-label">${label}</div>
+        </div>
+      `;
+    }).join("");
+
+    const wd = weekdayAverages();
+    const maxDayPoints = Math.max(0.001, ...wd.pointsAvg);
+    const maxDayCount  = Math.max(0.001, ...wd.countAvg);
+    const bestPointsDay = wd.pointsAvg.indexOf(Math.max(...wd.pointsAvg));
+    const bestCountDay  = wd.countAvg.indexOf(Math.max(...wd.countAvg));
+    const pointsByDayHtml = WEEKDAY_LABELS.map((label, i) => {
+      const v = wd.pointsAvg[i];
+      const h = (v / maxDayPoints) * 100;
+      const isBest = i === bestPointsDay && v > 0;
+      const display = v >= 10 ? v.toFixed(0) : v.toFixed(1);
+      return `
+        <div class="bar-col" title="${label} · avg ${display} pts">
+          <div class="bar-value">${v > 0 ? display : ""}</div>
+          <div class="bar-wrap"><div class="bar ${isBest ? 'current' : ''}" style="height:${h}%"></div></div>
+          <div class="x-label">${label}</div>
+        </div>
+      `;
+    }).join("");
+    const countByDayHtml = WEEKDAY_LABELS.map((label, i) => {
+      const v = wd.countAvg[i];
+      const h = (v / maxDayCount) * 100;
+      const isBest = i === bestCountDay && v > 0;
+      const display = v >= 10 ? v.toFixed(0) : v.toFixed(1);
+      return `
+        <div class="bar-col" title="${label} · avg ${display} tasks">
+          <div class="bar-value">${v > 0 ? display : ""}</div>
+          <div class="bar-wrap"><div class="bar ${isBest ? 'current' : ''}" style="height:${h}%"></div></div>
+          <div class="x-label">${label}</div>
+        </div>
+      `;
+    }).join("");
+
+    const rowsHtml = weeks.map(w => {
+      const breakdown = ["S", "M", "L", "XL"]
+        .filter(k => w.byEffort[k] > 0)
+        .map(k => `${k}:${w.byEffort[k]}`).join(" · ");
+      const untagged = w.byEffort.untagged > 0 ? ` <span style="color:#92400e">(?: ${w.byEffort.untagged})</span>` : "";
+      const isCurrent = w.start.getTime() === currentStart.getTime();
+      return `
+        <tr class="${isCurrent ? 'current-week' : ''}">
+          <td>${formatWeekRange(w.start)}${isCurrent ? " (this week)" : ""}</td>
+          <td class="num">${w.count}</td>
+          <td class="num"><span class="points">${w.points}</span></td>
+          <td><span class="breakdown">${breakdown || "—"}${untagged}</span></td>
+        </tr>
+      `;
+    }).join("");
+
+    el.innerHTML = `
+      <div class="stats-page-inner">
+        <h2>Stats — Work</h2>
+        <p class="subtitle">Throughput by completion date. 1pt = S, 2pt = M, 5pt = L, 10pt = XL.</p>
+
+        <div class="summary-cards">
+          <div class="summary-card">
+            <div class="label">This week</div>
+            <div class="value"><span class="points" style="color:var(--accent)">${current.points}</span> pts</div>
+            <div class="sub">${current.count} task${current.count === 1 ? "" : "s"} done</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">${prior.length}-week average</div>
+            <div class="value">${avgPoints.toFixed(1)} pts</div>
+            <div class="sub">${avgCount.toFixed(1)} tasks / week</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Best week (last ${HISTORY_WEEKS})</div>
+            <div class="value">${bestWeek.points} pts</div>
+            <div class="sub">${formatWeekRange(bestWeek.start)}</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Untagged (open)</div>
+            <div class="value" style="color:${untaggedWorkOpenCount() > 0 ? '#f59e0b' : 'inherit'}">${untaggedWorkOpenCount()}</div>
+            <div class="sub">work tasks missing effort</div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Points per week</h3>
+          <div class="points-chart">${chartHtml}</div>
+        </div>
+
+        <div class="stats-section">
+          <h3>By day of week <span class="section-sub">avg over last ${wd.weeksObserved} weeks (current week excluded)</span></h3>
+          <div class="weekday-grid">
+            <div>
+              <div class="chart-label">Points / day</div>
+              <div class="points-chart">${pointsByDayHtml}</div>
+            </div>
+            <div>
+              <div class="chart-label">Tasks / day</div>
+              <div class="points-chart">${countByDayHtml}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Weekly breakdown</h3>
+          <table class="weeks-table">
+            <thead><tr><th>Week</th><th class="num">Done</th><th class="num">Points</th><th>Breakdown</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
 
   // === Mutations ===
+  // === Undo / Redo (session-only, in-memory) ===
+  const undoMgr = { undo: [], redo: [], suspended: false, MAX: 60 };
+  const truncate = (s, n = 28) => { s = (s || 'task').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+  function flashStatus(msg) { setStatus(msg); setTimeout(() => setStatus(""), 1800); }
+  function undoLabelForPatch(patch) {
+    const keys = Object.keys(patch);
+    if (keys.includes('archived')) return patch.archived ? 'archive' : 'unarchive';
+    if (keys.includes('status')) return 'move to ' + (patch.status || '—');
+    if (keys.includes('createdAt')) return 'reset staleness';
+    if (keys.includes('timing')) return 'change due';
+    if (keys.includes('effort')) return 'change effort';
+    if (keys.includes('subtasks')) return 'edit subtasks';
+    if (keys.includes('title')) return 'edit title';
+    if (keys.includes('description')) return 'edit notes';
+    if (keys.includes('context')) return 'change context';
+    return 'edit';
+  }
+  function recordUndo(entry) {
+    if (undoMgr.suspended) return;
+    undoMgr.undo.push(entry);
+    if (undoMgr.undo.length > undoMgr.MAX) undoMgr.undo.shift();
+    undoMgr.redo.length = 0;  // a fresh action invalidates the redo branch
+  }
+  async function performUndo() {
+    const entry = undoMgr.undo.pop();
+    if (!entry) { flashStatus("Nothing to undo"); return; }
+    undoMgr.suspended = true;
+    try { await entry.undo(); undoMgr.redo.push(entry); flashStatus("Undid: " + entry.label); }
+    catch (e) { undoMgr.undo.push(entry); alert("Undo failed: " + e.message); }
+    finally { undoMgr.suspended = false; }
+  }
+  async function performRedo() {
+    const entry = undoMgr.redo.pop();
+    if (!entry) { flashStatus("Nothing to redo"); return; }
+    undoMgr.suspended = true;
+    try { await entry.redo(); undoMgr.undo.push(entry); flashStatus("Redid: " + entry.label); }
+    catch (e) { undoMgr.redo.push(entry); alert("Redo failed: " + e.message); }
+    finally { undoMgr.suspended = false; }
+  }
+
   async function patchTask(id, patch) {
     const idx = state.tasks.findIndex(t => t.id === id);
     if (idx < 0) return;
     const before = state.tasks[idx];
-    state.tasks[idx] = { ...before, ...patch, updatedAt: now() };
-    render();
+    if (patch.status === 'focus' && !('timing' in patch)) patch = { ...patch, timing: 'today' };
+    if (!undoMgr.suspended) {
+      const prev = {}, next = { ...patch };
+      for (const k of Object.keys(patch)) prev[k] = before[k];
+      recordUndo({
+        label: undoLabelForPatch(patch),
+        undo: () => patchTask(id, prev),
+        redo: () => patchTask(id, next),
+      });
+    }
+    const optimistic = { ...before, ...patch, updatedAt: now() };
+    if ('createdAt' in patch) optimistic.staleness = computeStaleness(patch.createdAt);
+    if ('status' in patch) {
+      if (patch.status === 'done' && before.status !== 'done') optimistic.completedAt = now();
+      else if (patch.status !== 'done' && before.status === 'done') optimistic.completedAt = null;
+    }
+    state.tasks[idx] = optimistic;
+    afterMutation(id);
     try {
       const updated = await updateTaskRow(id, patch);
       state.tasks[idx] = updated;
-      render();
+      afterMutation(id);
     } catch (e) {
       state.tasks[idx] = before;
-      render();
+      afterMutation(id);
       alert("Update failed: " + e.message);
     }
+  }
+
+  function afterMutation(id) {
+    if (state.filter.needsEffort && untaggedWorkOpenCount() === 0) {
+      state.filter.needsEffort = false;
+    }
+    if (state.view === 'stats') {
+      renderStatsPage();
+    } else if (state.view === 'focus') {
+      renderFocus();
+    } else {
+      render();
+      renderStatsStrip();
+    }
+    updateFocusBtnCount();
+    if (id && drawerTaskId === id) renderTimestamps();
   }
 
   async function deleteTask(id) {
@@ -1284,12 +2440,17 @@
     if (idx < 0) return;
     const removed = state.tasks[idx];
     state.tasks.splice(idx, 1);
-    render();
+    afterMutation();
     try {
       await deleteTaskRow(id);
+      recordUndo({
+        label: `delete "${truncate(removed.title)}"`,
+        undo: () => restoreTask(removed),
+        redo: () => deleteTask(removed.id),
+      });
     } catch (e) {
       state.tasks.splice(idx, 0, removed);
-      render();
+      afterMutation();
       alert("Delete failed: " + e.message);
     }
   }
@@ -1303,29 +2464,127 @@
     const key = group.dataset.key;
     if (key === "groupBy") {
       state.groupBy = btn.dataset.value;
+      group.querySelectorAll("button[data-value]").forEach(b => {
+        b.classList.toggle("active", b === btn);
+      });
     } else {
-      state.filter[key] = btn.dataset.value;
+      const wasActive = btn.classList.contains("active");
+      if (wasActive) {
+        state.filter[key] = "all";
+        btn.classList.remove("active");
+      } else {
+        state.filter[key] = btn.dataset.value;
+        group.querySelectorAll("button[data-value]").forEach(b => {
+          b.classList.toggle("active", b === btn);
+        });
+      }
     }
-    group.querySelectorAll("button[data-value]").forEach(b => {
-      b.classList.toggle("active", b === btn);
-    });
     render();
   });
 
   // === Toolbar: clear done ===
   document.getElementById("clear-done").addEventListener("click", async () => {
-    const done = state.tasks.filter(t => t.status === "done");
+    const done = state.tasks.filter(t => t.status === "done" && !t.archived);
     if (done.length === 0) return;
-    if (!confirm(`Remove ${done.length} completed task${done.length === 1 ? "" : "s"}?`)) return;
-    setStatus(`Clearing ${done.length}…`);
-    const results = await Promise.allSettled(done.map(t => deleteTaskRow(t.id)));
-    const okIds = new Set(done.filter((_, i) => results[i].status === "fulfilled").map(t => t.id));
-    state.tasks = state.tasks.filter(t => !okIds.has(t.id));
+    if (!confirm(`Archive ${done.length} completed task${done.length === 1 ? "" : "s"}? They leave the board but stay in your capacity stats.`)) return;
+    setStatus(`Archiving ${done.length}…`);
+    const results = await Promise.allSettled(done.map(t => updateTaskRow(t.id, { archived: true })));
+    const succeeded = [];
+    done.forEach((t, i) => {
+      if (results[i].status === "fulfilled") {
+        succeeded.push(t.id);
+        const idx = state.tasks.findIndex(x => x.id === t.id);
+        if (idx >= 0) state.tasks[idx] = results[i].value;
+      }
+    });
     setStatus("");
-    render();
+    afterMutation();
+    if (succeeded.length) {
+      const setArchived = async (val) => {
+        for (const id of succeeded) {
+          const r = await updateTaskRow(id, { archived: val });
+          const i = state.tasks.findIndex(x => x.id === id);
+          if (i >= 0) state.tasks[i] = r;
+        }
+        afterMutation();
+      };
+      recordUndo({
+        label: `archive ${succeeded.length} done`,
+        undo: () => setArchived(false),
+        redo: () => setArchived(true),
+      });
+    }
     const failed = results.filter(r => r.status === "rejected").length;
-    if (failed) alert(`${failed} task(s) failed to delete`);
+    if (failed) alert(`${failed} task(s) failed to archive`);
   });
+
+  document.getElementById("sidebar").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-target]");
+    if (!btn) return;
+    const target = btn.dataset.target;
+    if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
+    else if (target === 'stats') state.view = 'stats';
+    applyView();
+  });
+
+  document.getElementById("focus-btn").addEventListener("click", () => {
+    state.view = (state.view === 'focus') ? 'board' : 'focus';
+    applyView();
+  });
+
+  document.getElementById("header-ctx").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-context]");
+    if (!btn) return;
+    const ctx = btn.dataset.context;
+    state.filter.context = (state.filter.context === ctx) ? "all" : ctx;
+    syncHeaderCtx();
+    updateFocusBtnCount();
+    if (state.view === 'stats') renderStatsPage();
+    else if (state.view === 'focus') renderFocus();
+    else { renderStatsStrip(); render(); }
+  });
+
+  function syncHeaderCtx() {
+    document.querySelectorAll('#header-ctx .ctx-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.context === state.filter.context);
+    });
+  }
+
+  // === Theme (Light / Dark / System) ===
+  const THEME_KEY = 'kanban-theme';
+  const THEME_ICON = { system: '🖥️', light: '☀️', dark: '🌙' };
+  const THEME_ORDER = ['system', 'light', 'dark'];
+  const themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function getThemePref() {
+    const v = localStorage.getItem(THEME_KEY);
+    return THEME_ORDER.includes(v) ? v : 'system';
+  }
+  function applyTheme() {
+    const pref = getThemePref();
+    const dark = pref === 'dark' || (pref === 'system' && themeMedia && themeMedia.matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+      btn.textContent = THEME_ICON[pref];
+      btn.title = `Theme: ${pref[0].toUpperCase()}${pref.slice(1)}` +
+        (pref === 'system' ? ` (${dark ? 'dark' : 'light'})` : '') + ' — click to change';
+    }
+  }
+  function cycleTheme() {
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(getThemePref()) + 1) % THEME_ORDER.length];
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    applyTheme();
+  }
+  (function setupTheme() {
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.addEventListener('click', cycleTheme);
+    if (themeMedia) {
+      const onChange = () => { if (getThemePref() === 'system') applyTheme(); };
+      themeMedia.addEventListener ? themeMedia.addEventListener('change', onChange)
+                                  : themeMedia.addListener(onChange);
+    }
+    applyTheme();
+  })();
 
   // === Keyboard ===
   function isTyping(el) {
@@ -1345,9 +2604,9 @@
     if (!grouping.droppable) return;
     if (grouping.extract(task) === colId) return;
     if (state.groupBy === "status" && colId === "focus") {
-      const focusCount = state.tasks.filter(t => t.status === "focus").length;
-      if (focusCount >= FOCUS_CAP) {
-        setStatus(`Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+      const ctx = task.context;
+      if (focusCountFor(ctx) >= FOCUS_CAP) {
+        setStatus(`${ctx || "Uncategorized"} Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
         setTimeout(() => setStatus(""), 3000);
         return;
       }
@@ -1359,6 +2618,14 @@
   document.addEventListener("keydown", (e) => {
     if (isTyping(e.target)) return;
     if (!currentUser) return;
+
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) performRedo(); else performUndo();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); performRedo(); return; }
 
     if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); moveFocus(1); return; }
     if (e.key === "ArrowUp"   || e.key === "k") { e.preventDefault(); moveFocus(-1); return; }
@@ -1377,6 +2644,12 @@
       if (!task) return;
       e.preventDefault();
       openDrawer(task.id);
+      return;
+    }
+
+    if (e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && drawerTaskId) {
+      e.preventDefault();
+      toggleDrawerExpand();
       return;
     }
 

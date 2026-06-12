@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import quote
@@ -13,7 +14,8 @@ SERVER_VERSION = "0.1.0"
 
 STATUSES = ["inbox", "not-started", "in-progress", "focus", "done"]
 TIMINGS = ["today", "tomorrow", "this-week", "next-30-days"]
-EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks")
+EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks", "archived", "created_at")
+EFFORT_POINTS = {"S": 1, "M": 2, "L": 5, "XL": 10}
 
 
 def load_env(path):
@@ -85,6 +87,8 @@ def fmt_task(row):
     if subtasks:
         done = sum(1 for s in subtasks if s.get("done"))
         extras.append(f"subtasks:{done}/{len(subtasks)}")
+    if row.get("archived"):
+        extras.append("archived")
     if extras:
         bits.append("(" + ", ".join(extras) + ")")
     bits.append(f"id={row.get('id')}")
@@ -121,6 +125,8 @@ def tool_create_task(args):
             row["subtasks"] = normalize_subtasks(args["subtasks"])
         except ValueError as e:
             return error_content(str(e))
+    if row["status"] == "focus" and "timing" not in row:
+        row["timing"] = "today"
     status, data = sb_request("POST", body=row)
     if status >= 400:
         return error_content(f"Supabase {status}: {data}")
@@ -146,6 +152,8 @@ def tool_list_tasks(args):
         params["timing"] = f"eq.{args['timing']}"
     if args.get("search"):
         params["title"] = f"ilike.*{args['search']}*"
+    if not args.get("include_archived"):
+        params["archived"] = "eq.false"
     status, data = sb_request("GET", params=params)
     if status >= 400:
         return error_content(f"Supabase {status}: {data}")
@@ -171,6 +179,8 @@ def tool_update_task(args):
             patch["subtasks"] = normalize_subtasks(patch["subtasks"])
         except ValueError as e:
             return error_content(str(e))
+    if patch.get("status") == "focus" and "timing" not in patch:
+        patch["timing"] = "today"
     params = {"id": f"eq.{task_id}", "user_id": f"eq.{KANBAN_USER_ID}"}
     status, data = sb_request("PATCH", body=patch, params=params)
     if status >= 400:
@@ -197,12 +207,129 @@ def tool_delete_task(args):
     return text_content(f"Deleted: {fmt_task(data[0])}")
 
 
+def start_of_week_local(d):
+    """Monday 00:00 of the week containing d (local time, naive)."""
+    weekday = d.weekday()  # Mon=0..Sun=6
+    monday = (d - timedelta(days=weekday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return monday
+
+
+def fmt_week_range(start):
+    end = start + timedelta(days=6)
+    if start.month == end.month:
+        return f"{start.strftime('%b')} {start.day}–{end.day}"
+    return f"{start.strftime('%b %-d')} – {end.strftime('%b %-d')}"
+
+
+def tool_weekly_stats(args):
+    weeks = int(args.get("weeks", 4))
+    if weeks < 1 or weeks > 26:
+        return error_content("weeks must be between 1 and 26")
+    context = args.get("context", "Work")
+    if context not in ("Work", "Personal", "all"):
+        return error_content("context must be Work, Personal, or all")
+    include_current = args.get("include_current", True)
+
+    now_local = datetime.now()
+    current_start = start_of_week_local(now_local)
+    earliest = current_start - timedelta(weeks=weeks - (1 if include_current else 0))
+
+    params = {
+        "user_id": f"eq.{KANBAN_USER_ID}",
+        "status": "eq.done",
+        "completed_at": f"gte.{earliest.astimezone().isoformat()}",
+        "select": "completed_at,context,effort,title",
+        "order": "completed_at.desc",
+        "limit": "1000",
+    }
+    if context != "all":
+        params["context"] = f"eq.{context}"
+
+    status, data = sb_request("GET", params=params)
+    if status >= 400:
+        return error_content(f"Supabase {status}: {data}")
+
+    # Bucket by Monday-anchored local week
+    buckets = {}
+    for row in data or []:
+        ts = row.get("completed_at")
+        if not ts:
+            continue
+        # parse ISO (Postgres returns +00:00); convert to local
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        local_dt = dt.astimezone().replace(tzinfo=None)
+        wk_start = start_of_week_local(local_dt)
+        b = buckets.setdefault(wk_start, {"count": 0, "points": 0, "effort": {"S": 0, "M": 0, "L": 0, "XL": 0, "untagged": 0}})
+        b["count"] += 1
+        eff = row.get("effort")
+        if eff in EFFORT_POINTS:
+            b["effort"][eff] += 1
+            b["points"] += EFFORT_POINTS[eff]
+        else:
+            b["effort"]["untagged"] += 1
+
+    # Build ordered list of weeks (newest first)
+    weeks_list = []
+    for i in range(weeks):
+        offset = 0 if include_current else 1
+        start = current_start - timedelta(weeks=i + offset)
+        weeks_list.append((start, buckets.get(start, {"count": 0, "points": 0, "effort": {"S": 0, "M": 0, "L": 0, "XL": 0, "untagged": 0}})))
+
+    lines = [f"Weekly stats — context: {context}, weeks: {weeks}{' (excluding current)' if not include_current else ''}", ""]
+    lines.append(f"{'Week':<22} {'Done':>5} {'Pts':>5}  Breakdown")
+    lines.append("-" * 60)
+    totals = {"count": 0, "points": 0}
+    for start, b in weeks_list:
+        label = fmt_week_range(start)
+        if start == current_start:
+            label += " (current)"
+        breakdown_bits = []
+        for k in ("S", "M", "L", "XL"):
+            if b["effort"][k]:
+                breakdown_bits.append(f"{k}:{b['effort'][k]}")
+        if b["effort"]["untagged"]:
+            breakdown_bits.append(f"?:{b['effort']['untagged']}")
+        breakdown = " ".join(breakdown_bits) or "—"
+        lines.append(f"{label:<22} {b['count']:>5} {b['points']:>5}  {breakdown}")
+        totals["count"] += b["count"]
+        totals["points"] += b["points"]
+
+    lines.append("-" * 60)
+    avg_count = totals["count"] / len(weeks_list)
+    avg_points = totals["points"] / len(weeks_list)
+    lines.append(f"{'Average':<22} {avg_count:>5.1f} {avg_points:>5.1f}")
+
+    # Also count open work tasks missing effort (signal to nudge)
+    if context in ("Work", "all"):
+        params2 = {
+            "user_id": f"eq.{KANBAN_USER_ID}",
+            "status": "neq.done",
+            "effort": "is.null",
+            "select": "id",
+            "limit": "1000",
+        }
+        if context == "Work":
+            params2["context"] = "eq.Work"
+        s2, d2 = sb_request("GET", params=params2)
+        if s2 < 400 and isinstance(d2, list):
+            n = len(d2)
+            if n:
+                lines.append("")
+                lines.append(f"⚠ {n} open {'work ' if context == 'Work' else ''}task(s) missing effort — tag them so future weeks count fully.")
+
+    return text_content("\n".join(lines))
+
+
 TOOL_HANDLERS = {
     "create_task": tool_create_task,
     "list_tasks": tool_list_tasks,
     "update_task": tool_update_task,
     "move_task": tool_move_task,
     "delete_task": tool_delete_task,
+    "weekly_stats": tool_weekly_stats,
 }
 
 TOOLS = [
@@ -236,7 +363,7 @@ TOOLS = [
     },
     {
         "name": "list_tasks",
-        "description": "List kanban tasks, most-recently-updated first. Optional filters by status, context, timing, and title substring.",
+        "description": "List kanban tasks, most-recently-updated first. Optional filters by status, context, timing, and title substring. Archived tasks are hidden unless include_archived is true.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -245,6 +372,7 @@ TOOLS = [
                 "timing": {"type": "string", "enum": TIMINGS},
                 "search": {"type": "string", "description": "case-insensitive title substring match"},
                 "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500},
+                "include_archived": {"type": "boolean", "description": "include archived (cleared) tasks; default false", "default": False},
             },
         },
     },
@@ -263,6 +391,8 @@ TOOLS = [
                 "source_link": {"type": "string"},
                 "timing": {"type": "string", "enum": TIMINGS},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"]},
+                "archived": {"type": "boolean", "description": "archive (hide from board, keep in capacity stats) or unarchive"},
+                "created_at": {"type": "string", "description": "ISO timestamp; set to now to reset staleness (Fresh/Stale/Very Stale is derived from this)"},
                 "subtasks": {
                     "type": "array",
                     "description": "Replace the full subtask list. Strings or {text, done} objects.",
@@ -296,6 +426,22 @@ TOOLS = [
             "type": "object",
             "properties": {"id": {"type": "string"}},
             "required": ["id"],
+        },
+    },
+    {
+        "name": "weekly_stats",
+        "description": (
+            "Throughput report: tasks completed per week with effort points (S=1, M=2, L=5, XL=10). "
+            "Defaults to last 4 weeks of Work tasks, Monday-anchored local weeks. "
+            "Use weeks=1 + include_current=false for just last week, or context='all' for both Work and Personal."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "weeks": {"type": "integer", "default": 4, "minimum": 1, "maximum": 26, "description": "How many recent weeks to include."},
+                "include_current": {"type": "boolean", "default": True, "description": "If false, skip the current (in-progress) week."},
+                "context": {"type": "string", "enum": ["Work", "Personal", "all"], "default": "Work"},
+            },
         },
     },
 ]

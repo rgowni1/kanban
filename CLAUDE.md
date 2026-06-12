@@ -18,7 +18,7 @@ Auth: Supabase email+password (single user). Anon publishable key is committed t
 | File | Role |
 |---|---|
 | `index.html` | Static SPA. Supabase JS client, 5-column board, detail drawer, filter toolbar. Open directly or serve with `python3 -m http.server`. |
-| `mcp_server.py` | stdio MCP server. Tools: `create_task`, `list_tasks`, `update_task`, `move_task`, `delete_task`. Calls Supabase REST with the secret key from `.env`. |
+| `mcp_server.py` | stdio MCP server. Tools: `create_task`, `list_tasks`, `update_task`, `move_task`, `delete_task`, `weekly_stats`. Calls Supabase REST with the secret key from `.env`. |
 | `.mcp.json` | Wires `mcp_server.py` as the `kanban` MCP server for Claude Code in this directory. |
 | `run_sql.py` | Runs arbitrary SQL via Supabase Management API. Uses `SUPABASE_ACCESS_TOKEN` from `.env`. |
 | `set_password.py` | One-shot admin-API call to set the kanban user's password. |
@@ -43,6 +43,7 @@ effort       text                    -- S | M | L | XL
 subtasks     jsonb         NOT NULL  -- [{text, done}, ...]; default '[]'
 created_at   timestamptz   NOT NULL
 updated_at   timestamptz   NOT NULL
+completed_at timestamptz             -- auto-set by `set_completed_at` trigger on status → done; cleared on status → not-done
 ```
 
 `timing` and `effort` are CHECK-constrained enums. `status` is too (enforced in app code; constraint may or may not exist server-side). `description` is rendered as markdown in the drawer via `marked` + `DOMPurify` (CDN-loaded).
