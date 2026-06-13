@@ -590,10 +590,14 @@
   .sidebar-item .project-progress.complete { color: #15803d; }
   [data-theme="dark"] .sidebar-item .project-progress.complete { color: #6ee7b7; }
   #project-list { display: flex; flex-direction: column; }
-  .project-group-label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--muted); font-weight: 600; padding: 8px 10px 2px;
+  .sidebar-item.folder-item { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .folder-caret {
+    flex: 0 0 auto; width: 12px; font-size: 10px; color: var(--muted);
+    display: inline-flex; justify-content: center; cursor: pointer;
   }
+  .folder-children { display: flex; flex-direction: column; }
+  .folder-children .project-child { padding-left: 26px; font-weight: 400; }
+  .folder-empty { font-size: 11px; color: var(--muted); padding: 4px 10px 6px 30px; }
 
   /* Projects: breadcrumb bar above the board */
   .project-bar {
@@ -1169,6 +1173,19 @@
     try { localStorage.setItem(FOCUS_ORDER_KEY, JSON.stringify(state.focusOrder)); } catch {}
   }
 
+  // Collapsed state for the sidebar Work/Personal folders (persisted).
+  const PROJECT_FOLDERS_KEY = 'kanban.projectFoldersCollapsed';
+  function loadFoldersCollapsed() {
+    try {
+      const v = JSON.parse(localStorage.getItem(PROJECT_FOLDERS_KEY) || '{}');
+      return (v && typeof v === 'object') ? v : {};
+    } catch { return {}; }
+  }
+  function saveFoldersCollapsed() {
+    try { localStorage.setItem(PROJECT_FOLDERS_KEY, JSON.stringify(projectFoldersCollapsed)); } catch {}
+  }
+  let projectFoldersCollapsed = loadFoldersCollapsed();
+
   let state = {
     tasks: [],
     filter: { context: "all", timing: "all", staleness: "all", needsEffort: false },
@@ -1502,39 +1519,53 @@
     const projects = allProjects();
     list.innerHTML = "";
 
-    const makeBtn = (p) => {
+    const makeProjectBtn = (p) => {
       const { done, total } = projectProgress(p.id);
       const btn = document.createElement("button");
-      btn.className = "sidebar-item project-item";
+      btn.className = "sidebar-item project-item project-child";
       btn.dataset.project = p.id;
       btn.dataset.target = "kanban";
       btn.innerHTML = `<span class="icon">📁</span> <span class="project-name">${escapeHtml(p.title)}</span>`
         + `<span class="project-progress${done === total ? ' complete' : ''}">${done}/${total}</span>`;
       return btn;
     };
-    const addGroup = (label, items) => {
-      if (!items.length) return;
-      const h = document.createElement("div");
-      h.className = "project-group-label";
-      h.textContent = label;
-      list.appendChild(h);
-      items.forEach(p => list.appendChild(makeBtn(p)));
+    const addFolder = (key, icon, items, selectable) => {
+      const collapsed = !!projectFoldersCollapsed[key];
+      const folder = document.createElement("button");
+      folder.className = "sidebar-item folder-item";
+      folder.dataset.folder = key;
+      folder.innerHTML = `<span class="folder-caret">${collapsed ? '▸' : '▾'}</span>`
+        + `<span class="icon">${icon}</span> <span class="project-name">${escapeHtml(key)}</span>`
+        + `<span class="project-progress">${items.length}</span>`;
+      list.appendChild(folder);
+      if (!collapsed) {
+        const wrap = document.createElement("div");
+        wrap.className = "folder-children";
+        if (items.length) items.forEach(p => wrap.appendChild(makeProjectBtn(p)));
+        else {
+          const e = document.createElement("div");
+          e.className = "folder-empty";
+          e.textContent = "No projects yet";
+          wrap.appendChild(e);
+        }
+        list.appendChild(wrap);
+      }
     };
 
-    if (ctx === 'all') {
-      // Split under Work / Personal subheaders.
-      addGroup("Work", projects.filter(p => p.context === 'Work'));
-      addGroup("Personal", projects.filter(p => p.context === 'Personal'));
-      addGroup("No context", projects.filter(p => p.context !== 'Work' && p.context !== 'Personal'));
-    } else {
-      // Header scoped to one context — flat list, that context only.
-      projects.filter(p => p.context === ctx).forEach(p => list.appendChild(makeBtn(p)));
-    }
+    addFolder("Work", "💼", projects.filter(p => p.context === 'Work'), true);
+    addFolder("Personal", "🏠", projects.filter(p => p.context === 'Personal'), true);
+    const noCtx = projects.filter(p => p.context !== 'Work' && p.context !== 'Personal');
+    if (noCtx.length) addFolder("No context", "📂", noCtx, false);
 
-    // Sync active highlight (All Tasks vs a specific project).
-    document.querySelectorAll('#sidebar .project-item').forEach(b => {
-      b.classList.toggle('active', (b.dataset.project || null) === state.project);
+    // Active highlights: a selected project, its parent context folder, or All Tasks.
+    document.querySelectorAll('#sidebar .project-child').forEach(b => {
+      b.classList.toggle('active', b.dataset.project === state.project);
     });
+    document.querySelectorAll('#sidebar .folder-item').forEach(b => {
+      b.classList.toggle('active', !state.project && b.dataset.folder === ctx);
+    });
+    const allBtn = document.querySelector('#sidebar .project-item[data-project=""]');
+    if (allBtn) allBtn.classList.toggle('active', !state.project && ctx === 'all');
   }
 
   function renderProjectBar() {
@@ -2756,19 +2787,54 @@
   });
 
   document.getElementById("sidebar").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-target]");
+    // Folder collapse caret — toggle open/closed without selecting.
+    const caret = e.target.closest(".folder-caret");
+    if (caret) {
+      const key = caret.closest("[data-folder]").dataset.folder;
+      projectFoldersCollapsed[key] = !projectFoldersCollapsed[key];
+      saveFoldersCollapsed();
+      renderSidebarProjects();
+      return;
+    }
+    const btn = e.target.closest("button");
     if (!btn) return;
-    // Project selector items carry data-project ("" = All Tasks).
-    if (btn.hasAttribute('data-project')) {
-      state.project = btn.dataset.project || null;
-      state.view = 'board';   // project scope only applies to the board
+
+    // Context folder: scope the board to Work / Personal.
+    if (btn.hasAttribute('data-folder')) {
+      const key = btn.dataset.folder;
+      if (key !== 'Work' && key !== 'Personal') {   // "No context" only toggles
+        projectFoldersCollapsed[key] = !projectFoldersCollapsed[key];
+        saveFoldersCollapsed();
+        renderSidebarProjects();
+        return;
+      }
+      state.filter.context = key;
+      state.project = null;
+      state.view = 'board';
       applyView();
       return;
     }
+
+    // Project (data-project; "" = All Tasks). Drill into a project, syncing context.
+    if (btn.hasAttribute('data-project')) {
+      const pid = btn.dataset.project || null;
+      state.project = pid;
+      if (!pid) {
+        state.filter.context = 'all';                 // All Tasks resets the filter
+      } else {
+        const p = projectById(pid);
+        state.filter.context = (p && p.context) ? p.context : 'all';
+      }
+      state.view = 'board';
+      applyView();
+      return;
+    }
+
+    // Top-level nav (Kanban / Stats).
     const target = btn.dataset.target;
     if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
     else if (target === 'stats') state.view = 'stats';
-    applyView();
+    if (target) applyView();
   });
 
   document.getElementById("focus-btn").addEventListener("click", () => {
