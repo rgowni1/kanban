@@ -599,6 +599,56 @@
   .folder-children .project-child { padding-left: 26px; font-weight: 400; }
   .folder-empty { font-size: 11px; color: var(--muted); padding: 4px 10px 6px 30px; }
 
+  /* Today view — clean daily sandbox */
+  #today-view { padding: 8px 24px 32px; }
+  .today-wrap { max-width: 920px; margin: 0 auto; }
+  .today-head { display: flex; align-items: baseline; gap: 12px; margin: 8px 0 18px; }
+  .today-title { font-size: 22px; font-weight: 700; margin: 0; }
+  .today-date { color: var(--muted); font-size: 14px; }
+  .today-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 720px) { .today-grid { grid-template-columns: 1fr; } }
+  .today-pane { display: flex; flex-direction: column; gap: 8px; }
+  .today-pane-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    padding: 2px 4px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .today-pane-count { font-weight: 500; }
+  .today-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .today-card {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-radius: 10px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--border);
+    transition: border-color 0.12s, transform 0.06s, background 0.12s;
+  }
+  .today-card:hover { border-color: var(--accent); }
+  .today-card:active { transform: scale(0.995); }
+  .today-card.focus { background: var(--panel-2); }
+  .today-card-title { flex: 1; font-size: 14px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
+  .ctx-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .ctx-dot-Work { background: #7c3aed; }
+  .ctx-dot-Personal { background: #2563eb; }
+  .today-due {
+    flex: 0 0 auto; font-size: 11px; color: var(--muted);
+    background: var(--panel-2); border-radius: 999px; padding: 1px 8px;
+  }
+  .today-due.now { color: #b91c1c; background: #fee2e2; }
+  [data-theme="dark"] .today-due.now { color: #fecaca; background: #7f1d1d; }
+  .today-edit {
+    flex: 0 0 auto; border: none; background: transparent; color: var(--muted);
+    font-size: 13px; padding: 2px 6px; border-radius: 6px; cursor: pointer; opacity: 0;
+  }
+  .today-card:hover .today-edit { opacity: 1; }
+  .today-edit:hover { color: var(--accent); background: var(--panel-2); }
+  .today-empty { color: var(--muted); font-size: 13px; padding: 14px 4px; }
+  .today-add { margin-bottom: 2px; }
+  .today-add input {
+    width: 100%; font: inherit; font-size: 14px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; outline: none;
+  }
+  .today-add input:focus { border-color: var(--accent); }
+
   /* Projects: breadcrumb bar above the board */
   .project-bar {
     display: flex; align-items: center; gap: 10px;
@@ -936,7 +986,8 @@
     <div class="sidebar-brand"><span class="brand-dot"></span> Agent Home</div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Task Management</div>
-      <button class="sidebar-item active" data-target="kanban"><span class="icon">📋</span> Kanban</button>
+      <button class="sidebar-item" data-target="today"><span class="icon">☀️</span> Today</button>
+      <button class="sidebar-item" data-target="kanban"><span class="icon">📋</span> Kanban</button>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Projects</div>
@@ -996,6 +1047,7 @@
     </div>
     <div class="stats-strip" id="stats-strip" hidden></div>
     <div class="project-bar" id="project-bar" hidden></div>
+    <section id="today-view" hidden></section>
     <main id="board" hidden></main>
     <section id="focus-view" hidden></section>
     <section id="stats-page" hidden></section>
@@ -1190,7 +1242,7 @@
     tasks: [],
     filter: { context: "all", timing: "all", staleness: "all", needsEffort: false },
     groupBy: "status",
-    view: "board",
+    view: "today",
     project: null,            // null = All Tasks (top-level); otherwise a project (parent task) id
     focusOrder: loadFocusOrder(),
   };
@@ -1232,6 +1284,7 @@
   }
 
   function applyView() {
+    const isToday = state.view === 'today';
     const isBoard = state.view === 'board';
     const isFocus = state.view === 'focus';
     const isStats = state.view === 'stats';
@@ -1240,17 +1293,20 @@
     document.getElementById('toolbar').hidden = !isBoard;
     document.getElementById('stats-strip').hidden = !isBoard;
     if (!isBoard) document.getElementById('project-bar').hidden = true;
+    document.getElementById('today-view').hidden = !isToday;
     document.getElementById('board').hidden = !isBoard;
     document.getElementById('focus-view').hidden = !isFocus;
     document.getElementById('stats-page').hidden = !isStats;
 
-    document.getElementById('page-title').textContent = isStats ? 'Task Management' : 'Kanban';
+    document.getElementById('page-title').textContent =
+      isToday ? 'Today' : isStats ? 'Task Management' : 'Kanban';
     const focusBtn = document.getElementById('focus-btn');
     focusBtn.hidden = !isKanbanPage;
     focusBtn.classList.toggle('active', isFocus);
 
     document.querySelectorAll('#sidebar .sidebar-item').forEach(b => {
-      const isActive = (b.dataset.target === 'kanban' && isKanbanPage)
+      const isActive = (b.dataset.target === 'today' && isToday)
+                    || (b.dataset.target === 'kanban' && isKanbanPage)
                     || (b.dataset.target === 'stats' && isStats);
       b.classList.toggle('active', isActive);
     });
@@ -1259,7 +1315,9 @@
     syncHeaderCtx();
     renderSidebarProjects();
 
-    if (isBoard) {
+    if (isToday) {
+      renderToday();
+    } else if (isBoard) {
       renderStatsStrip();
       render();
     } else if (isFocus) {
@@ -1297,7 +1355,7 @@
         currentUser = null;
         state.tasks = [];
         state.filter = { context: "all", timing: "all", staleness: "all", needsEffort: false };
-        state.view = "board";
+        state.view = "today";
         showAuth();
       }
     });
@@ -1705,6 +1763,120 @@
       const ai = idx.has(a.id) ? idx.get(a.id) : Infinity;
       const bi = idx.has(b.id) ? idx.get(b.id) : Infinity;
       return ai - bi;
+    });
+  }
+
+  // === Today view (clean daily sandbox) ===
+  const POOL_STATUS_ORDER = { 'in-progress': 0, 'not-started': 1, 'inbox': 2 };
+
+  function renderToday() {
+    const root = document.getElementById('today-view');
+    const ctx = state.filter.context;
+    const inContext = (t) => ctx === 'all' || t.context === ctx;
+    // Focus = what you're committed to today.
+    const focus = state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus');
+    // Pool = actionable items you could pull into focus: not done, not already
+    // focused, and not a project container (you focus its tasks, not the wrapper).
+    const pool = state.tasks
+      .filter(t => !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t))
+      .sort((a, b) => {
+        const ad = a.timing === 'today' ? 0 : 1, bd = b.timing === 'today' ? 0 : 1;
+        if (ad !== bd) return ad - bd;
+        return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
+      });
+
+    const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    const dot = (t) => t.context ? `<span class="ctx-dot ctx-dot-${t.context}" title="${escapeHtml(t.context)}"></span>` : '';
+    const dueChip = (t) => t.timing === 'today'
+      ? `<span class="today-due now">today</span>`
+      : (t.timing ? `<span class="today-due">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>` : '');
+
+    const focusCard = (t) => `
+      <li class="today-card focus" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
+        ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
+      </li>`;
+    const poolCard = (t) => `
+      <li class="today-card" data-promote="${escapeHtml(t.id)}" title="Click to move into Focus">
+        ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        ${dueChip(t)}
+        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
+      </li>`;
+
+    root.innerHTML = `
+      <div class="today-wrap">
+        <div class="today-head">
+          <h2 class="today-title">Today</h2>
+          <span class="today-date">${escapeHtml(dateStr)}</span>
+        </div>
+        <div class="today-grid">
+          <section class="today-pane">
+            <div class="today-pane-head"><span>🎯 Focus</span><span class="today-pane-count">${focus.length}</span></div>
+            <ul class="today-list">
+              ${focus.length ? focus.map(focusCard).join('') : `<li class="today-empty">Pick from the right → to focus on it today.</li>`}
+            </ul>
+          </section>
+          <section class="today-pane">
+            <div class="today-add">
+              <input id="today-add-input" type="text" placeholder="+ Add a task…" autocomplete="off" />
+            </div>
+            <div class="today-pane-head"><span>Available</span><span class="today-pane-count">${pool.length}</span></div>
+            <ul class="today-list">
+              ${pool.length ? pool.map(poolCard).join('') : `<li class="today-empty">Nothing waiting — add one above. 🎉</li>`}
+            </ul>
+          </section>
+        </div>
+      </div>`;
+  }
+
+  function promoteToFocus(id) {
+    const t = state.tasks.find(x => x.id === id);
+    if (!t) return;
+    if (focusCountFor(t.context) >= FOCUS_CAP) {
+      flashStatus(`${t.context || 'Uncategorized'} Focus is full (${FOCUS_CAP}) — finish or drop one first`);
+      return;
+    }
+    patchTask(id, { status: 'focus' });   // patchTask auto-sets timing=today for focus
+  }
+
+  async function quickAddToday(raw) {
+    const v = (raw || '').trim();
+    if (!v) return;
+    const ctx = (state.filter.context === 'Work' || state.filter.context === 'Personal')
+      ? state.filter.context : 'Personal';
+    try {
+      const created = await createTaskRow({ title: v, status: 'not-started', context: ctx, source: 'Manual' });
+      state.tasks.unshift(created);
+      afterMutation();
+      recordUndo({
+        label: `add "${truncate(created.title)}"`,
+        undo: () => deleteTask(created.id),
+        redo: () => restoreTask(created),
+      });
+      const input = document.getElementById('today-add-input');
+      if (input) input.focus();
+    } catch (e) {
+      alert('Could not add task: ' + e.message);
+    }
+  }
+
+  function setupToday() {
+    const root = document.getElementById('today-view');
+    root.addEventListener('click', (e) => {
+      const edit = e.target.closest('[data-open]');
+      if (edit) { openDrawer(edit.dataset.open); return; }
+      const promote = e.target.closest('[data-promote]');
+      if (promote) { promoteToFocus(promote.dataset.promote); return; }
+      const demote = e.target.closest('[data-demote]');
+      if (demote) { patchTask(demote.dataset.demote, { status: 'in-progress' }); return; }
+    });
+    root.addEventListener('keydown', (e) => {
+      if (e.target.id === 'today-add-input' && e.key === 'Enter') {
+        e.preventDefault();
+        const val = e.target.value;
+        e.target.value = '';
+        quickAddToday(val);
+      }
     });
   }
 
@@ -2681,7 +2853,9 @@
     if (state.filter.needsEffort && untaggedWorkOpenCount() === 0) {
       state.filter.needsEffort = false;
     }
-    if (state.view === 'stats') {
+    if (state.view === 'today') {
+      renderToday();
+    } else if (state.view === 'stats') {
       renderStatsPage();
     } else if (state.view === 'focus') {
       renderFocus();
@@ -2830,9 +3004,10 @@
       return;
     }
 
-    // Top-level nav (Kanban / Stats).
+    // Top-level nav (Today / Kanban / Stats).
     const target = btn.dataset.target;
-    if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
+    if (target === 'today') state.view = 'today';
+    else if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
     else if (target === 'stats') state.view = 'stats';
     if (target) applyView();
   });
@@ -2850,7 +3025,8 @@
     syncHeaderCtx();
     updateFocusBtnCount();
     renderSidebarProjects();
-    if (state.view === 'stats') renderStatsPage();
+    if (state.view === 'today') renderToday();
+    else if (state.view === 'stats') renderStatsPage();
     else if (state.view === 'focus') renderFocus();
     else { renderStatsStrip(); render(); }
   });
@@ -2989,6 +3165,7 @@
   });
 
   setupDrawer();
+  setupToday();
   initAuth();
 })();
 </script>
