@@ -625,6 +625,15 @@
   .today-card:active { transform: scale(0.995); }
   .today-card.focus { background: var(--panel-2); }
   .today-card-title { flex: 1; font-size: 14px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
+  .today-bc { color: var(--muted); font-weight: 500; }
+  .today-card.subtask { margin-left: 20px; background: transparent; }
+  .today-card.subtask:hover { background: var(--panel); }
+  .today-group {
+    list-style: none; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--muted); padding: 12px 4px 2px;
+  }
+  .today-group-count { margin-left: auto; font-weight: 500; }
   .ctx-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .ctx-dot-Work { background: #7c3aed; }
   .ctx-dot-Personal { background: #2563eb; }
@@ -1802,13 +1811,24 @@
     const focus = state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus');
     // Pool = actionable items you could pull into focus: not done, not already
     // focused, and not a project container (you focus its tasks, not the wrapper).
-    const pool = state.tasks
-      .filter(t => !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t))
-      .sort((a, b) => {
-        const ad = a.timing === 'today' ? 0 : 1, bd = b.timing === 'today' ? 0 : 1;
-        if (ad !== bd) return ad - bd;
-        return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
-      });
+    const byDueThenStatus = (a, b) => {
+      const ad = a.timing === 'today' ? 0 : 1, bd = b.timing === 'today' ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
+    };
+    const poolTasks = state.tasks.filter(t =>
+      !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t));
+    // Standalone tasks render flat; subtasks group under their project.
+    const standalone = poolTasks.filter(t => !t.parentId).sort(byDueThenStatus);
+    const byParent = new Map();
+    for (const t of poolTasks) {
+      if (!t.parentId) continue;
+      (byParent.get(t.parentId) || byParent.set(t.parentId, []).get(t.parentId)).push(t);
+    }
+    const projectGroups = [...byParent.keys()]
+      .map(pid => ({ project: state.tasks.find(p => p.id === pid), kids: byParent.get(pid).sort(byDueThenStatus) }))
+      .filter(g => g.project)
+      .sort((a, b) => (a.project.title || '').localeCompare(b.project.title || ''));
 
     const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
     const dot = (t) => t.context ? `<span class="ctx-dot ctx-dot-${t.context}" title="${escapeHtml(t.context)}"></span>` : '';
@@ -1816,17 +1836,33 @@
       ? `<span class="today-due now">today</span>`
       : (t.timing ? `<span class="today-due">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>` : '');
 
-    const focusCard = (t) => `
-      <li class="today-card focus" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
-        ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+    const parentTitleOf = (t) => {
+      if (!t.parentId) return null;
+      const p = state.tasks.find(x => x.id === t.parentId);
+      return p ? p.title : null;
+    };
+    const focusCard = (t) => {
+      const par = parentTitleOf(t);
+      return `
+      <li class="today-card focus${t.parentId ? ' subtask' : ''}" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
+        ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
       </li>`;
+    };
     const poolCard = (t) => `
-      <li class="today-card" data-promote="${escapeHtml(t.id)}" title="Click to move into Focus">
+      <li class="today-card${t.parentId ? ' subtask' : ''}" data-promote="${escapeHtml(t.id)}" title="Click to move into Focus">
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${dueChip(t)}
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
       </li>`;
+    const groupHeader = (g) => `
+      <li class="today-group"><span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span><span class="today-group-count">${g.kids.length}</span></li>`;
+
+    const poolCount = poolTasks.length;
+    const poolBody = poolCount
+      ? standalone.map(poolCard).join('')
+        + projectGroups.map(g => groupHeader(g) + g.kids.map(poolCard).join('')).join('')
+      : `<li class="today-empty">Nothing waiting — add one above. 🎉</li>`;
 
     root.innerHTML = `
       <div class="today-wrap">
@@ -1845,10 +1881,8 @@
             <div class="today-add">
               <input id="today-add-input" type="text" placeholder="+ Add a task…" autocomplete="off" />
             </div>
-            <div class="today-pane-head"><span>Available</span><span class="today-pane-count">${pool.length}</span></div>
-            <ul class="today-list">
-              ${pool.length ? pool.map(poolCard).join('') : `<li class="today-empty">Nothing waiting — add one above. 🎉</li>`}
-            </ul>
+            <div class="today-pane-head"><span>Available</span><span class="today-pane-count">${poolCount}</span></div>
+            <ul class="today-list">${poolBody}</ul>
           </section>
         </div>
       </div>`;
