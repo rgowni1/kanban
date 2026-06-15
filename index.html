@@ -649,6 +649,12 @@
   }
   .today-card:hover .today-edit { opacity: 1; }
   .today-edit:hover { color: var(--accent); background: var(--panel-2); }
+  .today-del {
+    flex: 0 0 auto; border: none; background: transparent; color: var(--muted);
+    font-size: 18px; line-height: 1; padding: 0 6px; border-radius: 6px; cursor: pointer; opacity: 0;
+  }
+  .today-card:hover .today-del { opacity: 1; }
+  .today-del:hover { color: var(--danger); background: var(--panel-2); }
   .today-empty { color: var(--muted); font-size: 13px; padding: 14px 4px; }
   .today-add { margin-bottom: 2px; }
   .today-add input {
@@ -1847,6 +1853,7 @@
       <li class="today-card focus${t.parentId ? ' subtask' : ''}" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
         ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
+        <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
     };
     const poolCard = (t) => `
@@ -1854,6 +1861,7 @@
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${dueChip(t)}
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
+        <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
     const groupHeader = (g) => `
       <li class="today-group"><span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span><span class="today-group-count">${g.kids.length}</span></li>`;
@@ -1922,6 +1930,8 @@
   function setupToday() {
     const root = document.getElementById('today-view');
     root.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del]');
+      if (del) { deleteTask(del.dataset.del); return; }
       const edit = e.target.closest('[data-open]');
       if (edit) { openDrawer(edit.dataset.open); return; }
       const promote = e.target.closest('[data-promote]');
