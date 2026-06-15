@@ -1428,6 +1428,35 @@
   }
 
   // === Data layer ===
+  // === Weekly Focus reset (on-open rollover) ===
+  // Each new week (after Sunday 6pm local), move Focus tasks back to In Progress
+  // exactly once, the next time the app is opened.
+  const WEEKLY_RESET_KEY = 'kanban.lastFocusReset';
+  function lastFocusResetBoundary() {
+    const now = new Date();
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - now.getDay());   // most recent Sunday (Sun=0)
+    sunday.setHours(18, 0, 0, 0);                    // 6pm
+    if (now < sunday) sunday.setDate(sunday.getDate() - 7);  // not past this Sunday 6pm yet
+    return sunday;
+  }
+  function maybeWeeklyFocusReset() {
+    const key = lastFocusResetBoundary().toISOString();
+    let last = null;
+    try { last = localStorage.getItem(WEEKLY_RESET_KEY); } catch {}
+    if (last === key) return;                        // already rolled over this week
+    try { localStorage.setItem(WEEKLY_RESET_KEY, key); } catch {}
+    if (last === null) return;                       // first run on this device — don't sweep retroactively
+    const toReset = state.tasks.filter(t => t.status === 'focus' && !t.archived);
+    if (!toReset.length) return;
+    for (const t of toReset) {                        // optimistic local update
+      const idx = state.tasks.findIndex(x => x.id === t.id);
+      if (idx >= 0) state.tasks[idx] = { ...state.tasks[idx], status: 'in-progress', updatedAt: now() };
+    }
+    Promise.all(toReset.map(t => updateTaskRow(t.id, { status: 'in-progress' }))).catch(() => {});
+    flashStatus(`New week — moved ${toReset.length} Focus task${toReset.length === 1 ? '' : 's'} back to In Progress`);
+  }
+
   async function loadTasks() {
     setStatus("Loading…");
     const { data, error } = await supabase
@@ -1441,12 +1470,8 @@
     }
     state.tasks = data.map(rowToTask);
     setStatus("");
-    if (state.view === 'stats') {
-      renderStatsPage();
-    } else {
-      renderStatsStrip();
-      render();
-    }
+    maybeWeeklyFocusReset();   // start each week with a clean Focus (optimistic; persists in bg)
+    applyView();               // render the current view (today / board / focus / stats) with loaded data
   }
 
   async function createTaskRow({ title, status, context, source, timing, parentId }) {
