@@ -628,6 +628,15 @@
   .today-bc { color: var(--muted); font-weight: 500; }
   .today-card.subtask { margin-left: 20px; background: transparent; }
   .today-card.subtask:hover { background: var(--panel); }
+  .today-card.today-proj-focus { font-weight: 600; }
+  .today-card.focus-child { background: transparent; }
+  .today-card.focus-child:hover { background: var(--panel); }
+  .today-check {
+    flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid var(--border); background: transparent;
+    display: inline-block; transition: background 0.12s, border-color 0.12s;
+  }
+  .today-card.focus-child:hover .today-check { border-color: var(--accent); background: var(--panel-2); }
   .today-group {
     list-style: none; display: flex; align-items: center; gap: 6px;
     font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1827,8 +1836,12 @@
       if (ad !== bd) return ad - bd;
       return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
     };
+    // A focused project shows its open subtasks nested under it (below), so keep
+    // those out of the Available pool to avoid listing them in two places.
+    const focusedProjectIds = new Set(focus.filter(isProject).map(t => t.id));
     const poolTasks = state.tasks.filter(t =>
-      !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t));
+      !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t)
+      && !(t.parentId && focusedProjectIds.has(t.parentId)));
     // Standalone tasks render flat; subtasks group under their project.
     const standalone = poolTasks.filter(t => !t.parentId).sort(byDueThenStatus);
     const byParent = new Map();
@@ -1878,6 +1891,30 @@
         <button class="today-del" data-del="${escapeHtml(g.project.id)}" title="Delete project + its subtasks">×</button>
       </li>`;
 
+    // A project in Focus: show the project as a header card with its open subtasks nested beneath.
+    const projectFocusCard = (t) => {
+      const { done, total } = projectProgress(t.id);
+      return `
+      <li class="today-card focus today-proj-focus" data-demote="${escapeHtml(t.id)}" title="Click to move project back to In Progress">
+        <span class="ctx-ico">📁</span><span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        <span class="today-due">${done}/${total}</span>
+        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open project">✎</button>
+        <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete project + subtasks">×</button>
+      </li>`;
+    };
+    const focusChildCard = (t) => `
+      <li class="today-card subtask focus-child" data-toggle="${escapeHtml(t.id)}" title="Click to mark done">
+        <span class="today-check" aria-hidden="true"></span>
+        ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
+        <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
+      </li>`;
+    const focusBody = focus.length
+      ? focus.map(t => isProject(t)
+          ? projectFocusCard(t) + childrenOf(t.id).filter(c => c.status !== 'done').sort(byDueThenStatus).map(focusChildCard).join('')
+          : focusCard(t)).join('')
+      : `<li class="today-empty">Pick from the right → to focus on it today.</li>`;
+
     const poolCount = poolTasks.length;
     const poolBody = poolCount
       ? standalone.map(poolCard).join('')
@@ -1893,9 +1930,7 @@
         <div class="today-grid">
           <section class="today-pane">
             <div class="today-pane-head"><span>🎯 Focus</span><span class="today-pane-count">${focus.length}</span></div>
-            <ul class="today-list">
-              ${focus.length ? focus.map(focusCard).join('') : `<li class="today-empty">Pick from the right → to focus on it today.</li>`}
-            </ul>
+            <ul class="today-list">${focusBody}</ul>
           </section>
           <section class="today-pane">
             <div class="today-add">
@@ -1946,6 +1981,8 @@
       if (del) { deleteTask(del.dataset.del); return; }
       const edit = e.target.closest('[data-open]');
       if (edit) { openDrawer(edit.dataset.open); return; }
+      const toggle = e.target.closest('[data-toggle]');
+      if (toggle) { patchTask(toggle.dataset.toggle, { status: 'done' }); return; }
       const promote = e.target.closest('[data-promote]');
       if (promote) { promoteToFocus(promote.dataset.promote); return; }
       const demote = e.target.closest('[data-demote]');
