@@ -640,6 +640,8 @@
   .ctx-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .ctx-dot-Work { background: #7c3aed; }
   .ctx-dot-Personal { background: #2563eb; }
+  .ctx-ico { flex: 0 0 auto; font-size: 14px; line-height: 1; width: 18px; text-align: center; }
+  .ctx-ico.ctx-none { color: var(--muted); }
   .today-due {
     flex: 0 0 auto; font-size: 11px; color: var(--muted);
     background: var(--panel-2); border-radius: 999px; padding: 1px 8px;
@@ -1840,7 +1842,10 @@
       .sort((a, b) => (a.project.title || '').localeCompare(b.project.title || ''));
 
     const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-    const dot = (t) => t.context ? `<span class="ctx-dot ctx-dot-${t.context}" title="${escapeHtml(t.context)}"></span>` : '';
+    const dot = (t) =>
+      t.context === 'Work' ? `<span class="ctx-ico" title="Work">💼</span>`
+      : t.context === 'Personal' ? `<span class="ctx-ico" title="Personal">🏠</span>`
+      : `<span class="ctx-ico ctx-none" title="No context">·</span>`;
     const dueChip = (t) => t.timing === 'today'
       ? `<span class="today-due now">today</span>`
       : (t.timing ? `<span class="today-due">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>` : '');
