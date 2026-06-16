@@ -631,9 +631,12 @@
   .today-group {
     list-style: none; display: flex; align-items: center; gap: 6px;
     font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-    color: var(--muted); padding: 12px 4px 2px;
+    color: var(--muted); padding: 12px 6px 2px; cursor: pointer; border-radius: 6px;
   }
+  .today-group:hover .today-group-name { color: var(--accent); }
   .today-group-count { margin-left: auto; font-weight: 500; }
+  .today-group .today-del { font-size: 16px; margin-left: 4px; }
+  .today-group:hover .today-del { opacity: 1; }
   .ctx-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .ctx-dot-Work { background: #7c3aed; }
   .ctx-dot-Personal { background: #2563eb; }
@@ -1864,7 +1867,11 @@
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
     const groupHeader = (g) => `
-      <li class="today-group"><span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span><span class="today-group-count">${g.kids.length}</span></li>`;
+      <li class="today-group" data-open="${escapeHtml(g.project.id)}" title="Open project to edit">
+        <span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span>
+        <span class="today-group-count">${g.kids.length}</span>
+        <button class="today-del" data-del="${escapeHtml(g.project.id)}" title="Delete project + its subtasks">×</button>
+      </li>`;
 
     const poolCount = poolTasks.length;
     const poolBody = poolCount
