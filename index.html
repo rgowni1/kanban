@@ -632,11 +632,14 @@
   .today-card.focus-child { background: transparent; }
   .today-card.focus-child:hover { background: var(--panel); }
   .today-check {
-    flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%;
-    border: 1.5px solid var(--border); background: transparent;
-    display: inline-block; transition: background 0.12s, border-color 0.12s;
+    flex: 0 0 auto; width: 17px; height: 17px; border-radius: 50%;
+    border: 1.5px solid var(--border); background: transparent; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; color: transparent; line-height: 1;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
   }
-  .today-card.focus-child:hover .today-check { border-color: var(--accent); background: var(--panel-2); }
+  .today-check::before { content: "✓"; }
+  .today-check:hover { border-color: var(--ok, #16a34a); color: var(--ok, #16a34a); background: var(--panel-2); }
   .today-group {
     list-style: none; display: flex; align-items: center; gap: 6px;
     font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1872,6 +1875,7 @@
       const par = parentTitleOf(t);
       return `
       <li class="today-card focus${t.parentId ? ' subtask' : ''}" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
+        <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
@@ -1879,6 +1883,7 @@
     };
     const poolCard = (t) => `
       <li class="today-card${t.parentId ? ' subtask' : ''}" data-promote="${escapeHtml(t.id)}" title="Click to move into Focus">
+        <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${dueChip(t)}
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
@@ -1903,14 +1908,16 @@
       </li>`;
     };
     const focusChildCard = (t) => `
-      <li class="today-card subtask focus-child" data-toggle="${escapeHtml(t.id)}" title="Click to mark done">
-        <span class="today-check" aria-hidden="true"></span>
+      <li class="today-card subtask focus-child" data-open="${escapeHtml(t.id)}" title="Click to open; ○ to mark done">
+        <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
-        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
-    const focusBody = focus.length
-      ? focus.map(t => isProject(t)
+    // Don't list a focused subtask at the top level if its project is also focused —
+    // it already shows nested under that project below.
+    const focusTop = focus.filter(t => !(t.parentId && focusedProjectIds.has(t.parentId)));
+    const focusBody = focusTop.length
+      ? focusTop.map(t => isProject(t)
           ? projectFocusCard(t) + childrenOf(t.id).filter(c => c.status !== 'done').sort(byDueThenStatus).map(focusChildCard).join('')
           : focusCard(t)).join('')
       : `<li class="today-empty">Pick from the right → to focus on it today.</li>`;
@@ -1979,10 +1986,10 @@
     root.addEventListener('click', (e) => {
       const del = e.target.closest('[data-del]');
       if (del) { deleteTask(del.dataset.del); return; }
-      const edit = e.target.closest('[data-open]');
-      if (edit) { openDrawer(edit.dataset.open); return; }
       const toggle = e.target.closest('[data-toggle]');
       if (toggle) { patchTask(toggle.dataset.toggle, { status: 'done' }); return; }
+      const edit = e.target.closest('[data-open]');
+      if (edit) { openDrawer(edit.dataset.open); return; }
       const promote = e.target.closest('[data-promote]');
       if (promote) { promoteToFocus(promote.dataset.promote); return; }
       const demote = e.target.closest('[data-demote]');
