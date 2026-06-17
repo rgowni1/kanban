@@ -1874,7 +1874,7 @@
     const focusCard = (t) => {
       const par = parentTitleOf(t);
       return `
-      <li class="today-card focus${t.parentId ? ' subtask' : ''}" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
+      <li class="today-card focus" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
