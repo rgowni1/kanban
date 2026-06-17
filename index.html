@@ -1916,9 +1916,16 @@
     // Don't list a focused subtask at the top level if its project is also focused —
     // it already shows nested under that project below.
     const focusTop = focus.filter(t => !(t.parentId && focusedProjectIds.has(t.parentId)));
+    // Nested under a focused project: the focused children if any are focused,
+    // otherwise the whole open checklist (i.e. when you focus the project itself).
+    const focusNested = (pid) => {
+      const open = childrenOf(pid).filter(c => c.status !== 'done');
+      const focused = open.filter(c => c.status === 'focus');
+      return (focused.length ? focused : open).sort(byDueThenStatus);
+    };
     const focusBody = focusTop.length
       ? focusTop.map(t => isProject(t)
-          ? projectFocusCard(t) + childrenOf(t.id).filter(c => c.status !== 'done').sort(byDueThenStatus).map(focusChildCard).join('')
+          ? projectFocusCard(t) + focusNested(t.id).map(focusChildCard).join('')
           : focusCard(t)).join('')
       : `<li class="today-empty">Pick from the right → to focus on it today.</li>`;
 
@@ -2963,6 +2970,13 @@
     }
     state.tasks[idx] = optimistic;
     afterMutation(id);
+    // Focusing a subtask pulls its project into Focus too, so it shows grouped there.
+    if (patch.status === 'focus' && before.parentId) {
+      const parent = state.tasks.find(t => t.id === before.parentId);
+      if (parent && parent.status !== 'focus' && !parent.archived) {
+        patchTask(before.parentId, { status: 'focus' });
+      }
+    }
     try {
       const updated = await updateTaskRow(id, patch);
       state.tasks[idx] = updated;
