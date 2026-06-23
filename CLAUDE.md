@@ -38,7 +38,7 @@ source       text                    -- e.g. "Manual", "Notion"
 source_link  text
 notion_id    text                    -- import dedup key (legacy)
 description  text                    -- markdown
-timing       text                    -- today | tomorrow | this-week | next-30-days
+timing       text                    -- today | tomorrow | this-week | next-week | next-30-days
 effort       text                    -- S | M | L | XL
 parent_id    uuid          FK tasks(id) ON DELETE CASCADE  -- 2-level hierarchy: a child task's project
 subtasks     jsonb         NOT NULL  -- LEGACY. Migrated to child tasks; kept at '[]'. Do not write new data here.
@@ -61,6 +61,15 @@ completed_at timestamptz             -- auto-set by `set_completed_at` trigger o
 The toolbar exposes both **filters** (Context / Due / Age — multi-pill filter pattern) and a **group-by toggle** (Status / Due / Age / Context). They're independent: filters always AND-narrow the visible set, group-by chooses which dimension drives the columns.
 
 Drag-drop reassigns the grouping field where it makes sense (status / timing / context); in Age grouping it's a no-op since staleness is derived from `created_at`.
+
+## Automations (on-open rollovers)
+
+Two weekly rollovers run client-side in `loadTasks()` — they fire once per week on the first app open after the boundary (tracked in `localStorage`, skip their first-ever run so nothing is swept retroactively; optimistic local update + background persist):
+
+- **Focus → In Progress** after Sunday 6pm (`maybeWeeklyFocusReset`, key `kanban.lastFocusReset`).
+- **Next Week → This Week** on/after Monday 00:00 (`maybeNextWeekRollover`, key `kanban.lastNextWeekRoll`).
+
+There is no server-side scheduler; whichever machine opens the app first that week runs the rollover, and it's idempotent across devices.
 
 ## Related repos
 

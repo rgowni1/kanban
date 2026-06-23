@@ -304,10 +304,12 @@
   .badge.timing-today        { background: #fee2e2; color: #991b1b; }
   .badge.timing-tomorrow     { background: #fef3c7; color: #92400e; }
   .badge.timing-this-week    { background: #dbeafe; color: #1e3a8a; }
+  .badge.timing-next-week    { background: #e0e7ff; color: #3730a3; }
   .badge.timing-next-30-days { background: #f1f5f9; color: #475569; }
     [data-theme="dark"] .badge.timing-today { background: #7f1d1d; color: #fecaca; }
   [data-theme="dark"] .badge.timing-tomorrow { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .badge.timing-this-week { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .badge.timing-next-week { background: #3730a3; color: #e0e7ff; }
   [data-theme="dark"] .badge.timing-next-30-days { background: #292524; color: #e7e5e4; }
 
   /* Toolbar (filter rows) */
@@ -351,6 +353,9 @@
   .filter-group[data-key="timing"] button[data-value="this-week"].active {
     background: #dbeafe; color: #1e3a8a; border-color: transparent;
   }
+  .filter-group[data-key="timing"] button[data-value="next-week"].active {
+    background: #e0e7ff; color: #3730a3; border-color: transparent;
+  }
   .filter-group[data-key="timing"] button[data-value="next-30-days"].active {
     background: #f1f5f9; color: #475569; border-color: transparent;
   }
@@ -372,6 +377,7 @@
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="today"].active { background: #7f1d1d; color: #fecaca; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="tomorrow"].active { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="this-week"].active { background: #1e3a8a; color: #dbeafe; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-week"].active { background: #3730a3; color: #e0e7ff; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-30-days"].active { background: #1c1917; color: #e7e5e4; }
   [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="fresh"].active { background: #064e3b; color: #6ee7b7; }
   [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="stale"].active { background: #7f1d1d; color: #fecaca; }
@@ -1069,6 +1075,7 @@
         <button data-value="today">Today</button>
         <button data-value="tomorrow">Tomorrow</button>
         <button data-value="this-week">This Week</button>
+        <button data-value="next-week">Next Week</button>
         <button data-value="next-30-days">Next 30d</button>
       </div>
       <div class="filter-group" data-key="staleness">
@@ -1131,6 +1138,7 @@
             <option value="today">Today</option>
             <option value="tomorrow">Tomorrow</option>
             <option value="this-week">This Week</option>
+            <option value="next-week">Next Week</option>
             <option value="next-30-days">Next 30 days</option>
           </select>
         </div>
@@ -1188,6 +1196,7 @@
     "today": "Today",
     "tomorrow": "Tomorrow",
     "this-week": "This Week",
+    "next-week": "Next Week",
     "next-30-days": "Next 30d",
   };
   const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
@@ -1211,6 +1220,7 @@
         { id: "today",        label: "Today" },
         { id: "tomorrow",     label: "Tomorrow" },
         { id: "this-week",    label: "This Week" },
+        { id: "next-week",    label: "Next Week" },
         { id: "next-30-days", label: "Next 30 days" },
         { id: "__none__",     label: "—" },
       ],
@@ -1489,6 +1499,35 @@
     flashStatus(`New week — moved ${toReset.length} Focus task${toReset.length === 1 ? '' : 's'} back to In Progress`);
   }
 
+  // === Next Week → This Week rollover (on-open, Monday AM) ===
+  // On the first open on/after each Monday 00:00 local, promote next-week tasks
+  // to this-week exactly once.
+  const NEXTWEEK_ROLL_KEY = 'kanban.lastNextWeekRoll';
+  function lastMondayBoundary() {
+    const now = new Date();
+    const monday = new Date(now);
+    const back = (now.getDay() + 6) % 7;            // days since most recent Monday (Mon=0)
+    monday.setDate(now.getDate() - back);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  }
+  function maybeNextWeekRollover() {
+    const key = lastMondayBoundary().toISOString();
+    let last = null;
+    try { last = localStorage.getItem(NEXTWEEK_ROLL_KEY); } catch {}
+    if (last === key) return;                         // already rolled this week
+    try { localStorage.setItem(NEXTWEEK_ROLL_KEY, key); } catch {}
+    if (last === null) return;                        // first run — set baseline, don't roll retroactively
+    const toRoll = state.tasks.filter(t => t.timing === 'next-week' && !t.archived);
+    if (!toRoll.length) return;
+    for (const t of toRoll) {                          // optimistic local update
+      const idx = state.tasks.findIndex(x => x.id === t.id);
+      if (idx >= 0) state.tasks[idx] = { ...state.tasks[idx], timing: 'this-week', updatedAt: now() };
+    }
+    Promise.all(toRoll.map(t => updateTaskRow(t.id, { timing: 'this-week' }))).catch(() => {});
+    flashStatus(`New week — moved ${toRoll.length} Next Week task${toRoll.length === 1 ? '' : 's'} to This Week`);
+  }
+
   async function loadTasks() {
     setStatus("Loading…");
     const { data, error } = await supabase
@@ -1503,6 +1542,7 @@
     state.tasks = data.map(rowToTask);
     setStatus("");
     maybeWeeklyFocusReset();   // start each week with a clean Focus (optimistic; persists in bg)
+    maybeNextWeekRollover();   // Monday AM: Next Week → This Week
     applyView();               // render the current view (today / board / focus / stats) with loaded data
   }
 
