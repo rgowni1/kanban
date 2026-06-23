@@ -1300,10 +1300,16 @@
     const kids = childrenOf(id);
     return { done: kids.filter(c => c.status === 'done').length, total: kids.length };
   }
-  // Top-level projects (have children), most-recently-updated first.
+  // "Complete" = the task itself is done, or (a project whose) every subtask is done.
+  function isComplete(t) {
+    if (t.status === 'done') return true;
+    const kids = childrenOf(t.id);
+    return kids.length > 0 && kids.every(c => c.status === 'done');
+  }
+  // Top-level projects (have children), excluding completed ones, most-recently-updated first.
   function allProjects() {
     return state.tasks
-      .filter(t => isProject(t) && !t.archived)
+      .filter(t => isProject(t) && !t.archived && !isComplete(t))
       .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
   }
   function projectById(id) {
@@ -2407,7 +2413,8 @@
     // If the task has no context yet, show all so the picker isn't empty.
     state.tasks
       .filter(t => !t.parentId && t.id !== task.id && !t.archived
-                && ((!task.context || t.context === task.context) || t.id === task.parentId))
+                && (t.id === task.parentId
+                    || ((!task.context || t.context === task.context) && !isComplete(t))))
       .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
       .forEach(t => opts.push(`<option value="${t.id}">${escapeHtml(t.title)}</option>`));
     sel.innerHTML = opts.join("");
