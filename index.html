@@ -686,6 +686,19 @@
     border-radius: 10px; padding: 10px 12px; outline: none;
   }
   .today-add input:focus { border-color: var(--accent); }
+  .today-add-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  .today-add-sel {
+    font: inherit; font-size: 12px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 8px; outline: none; cursor: pointer;
+  }
+  .today-add-sel:focus { border-color: var(--accent); }
+  .today-add-btn {
+    margin-left: auto; font: inherit; font-size: 13px; font-weight: 600;
+    color: #fff; background: var(--accent); border: none;
+    border-radius: 8px; padding: 6px 16px; cursor: pointer;
+  }
+  .today-add-btn:hover { filter: brightness(1.05); }
 
   /* Projects: breadcrumb bar above the board */
   .project-bar {
@@ -1552,10 +1565,11 @@
     applyView();               // render the current view (today / board / focus / stats) with loaded data
   }
 
-  async function createTaskRow({ title, status, context, source, timing, parentId }) {
+  async function createTaskRow({ title, status, context, source, timing, parentId, effort }) {
     const row = { title, status, context, source, user_id: currentUser.id };
     if (timing) row.timing = timing;
     if (parentId) row.parent_id = parentId;
+    if (effort) row.effort = effort;
     if (status === 'focus' && !row.timing) row.timing = 'today';
     const { data, error } = await supabase
       .from('tasks')
@@ -1872,6 +1886,9 @@
   // === Today view (clean daily sandbox) ===
   const POOL_STATUS_ORDER = { 'in-progress': 0, 'not-started': 1, 'inbox': 2 };
 
+  // Inline add-form draft (persists across the Today re-renders).
+  const todayAdd = { open: false, context: '', due: '', effort: '', project: '' };
+
   function renderToday() {
     const root = document.getElementById('today-view');
     const ctx = state.filter.context;
@@ -1995,12 +2012,60 @@
           <section class="today-pane">
             <div class="today-add">
               <input id="today-add-input" type="text" placeholder="+ Add a task…" autocomplete="off" />
+              <div class="today-add-row" id="today-add-row" hidden>
+                <select id="add-context" class="today-add-sel">
+                  <option value="">Context…</option>
+                  <option value="Work">💼 Work</option>
+                  <option value="Personal">🏠 Personal</option>
+                </select>
+                <select id="add-due" class="today-add-sel">
+                  <option value="">Due…</option>
+                  <option value="today">Today</option>
+                  <option value="tomorrow">Tomorrow</option>
+                  <option value="this-week">This Week</option>
+                  <option value="next-week">Next Week</option>
+                  <option value="next-30-days">Next 30d</option>
+                </select>
+                <select id="add-effort" class="today-add-sel">
+                  <option value="">Effort…</option>
+                  <option value="S">S</option>
+                  <option value="M">M</option>
+                  <option value="L">L</option>
+                  <option value="XL">XL</option>
+                </select>
+                <select id="add-project" class="today-add-sel"><option value="">No project</option></select>
+                <button id="add-confirm" class="today-add-btn">Add</button>
+              </div>
             </div>
             <div class="today-pane-head"><span>Available</span><span class="today-pane-count">${poolCount}</span></div>
             <ul class="today-list">${poolBody}</ul>
           </section>
         </div>
       </div>`;
+    syncTodayAddForm();
+  }
+
+  // Restore the inline add-form's open state + selections after each render,
+  // and populate the project list for the chosen context.
+  function syncTodayAddForm() {
+    const row = document.getElementById('today-add-row');
+    if (!row) return;
+    row.hidden = !todayAdd.open;
+    const ctxSel = document.getElementById('add-context');
+    const dueSel = document.getElementById('add-due');
+    const effSel = document.getElementById('add-effort');
+    const projSel = document.getElementById('add-project');
+    ctxSel.value = todayAdd.context;
+    dueSel.value = todayAdd.due;
+    effSel.value = todayAdd.effort;
+    const opts = ['<option value="">No project</option>'];
+    allProjects()
+      .filter(p => !todayAdd.context || p.context === todayAdd.context)
+      .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+      .forEach(p => opts.push(`<option value="${p.id}">${escapeHtml(p.title)}</option>`));
+    projSel.innerHTML = opts.join('');
+    if (!projSel.querySelector(`option[value="${todayAdd.project}"]`)) todayAdd.project = '';
+    projSel.value = todayAdd.project;
   }
 
   function promoteToFocus(id) {
@@ -2013,22 +2078,29 @@
     patchTask(id, { status: 'focus' });   // patchTask auto-sets timing=today for focus
   }
 
-  async function quickAddToday(raw) {
-    const v = (raw || '').trim();
+  async function submitTodayAdd() {
+    const input = document.getElementById('today-add-input');
+    const v = (input?.value || '').trim();
     if (!v) return;
-    const ctx = (state.filter.context === 'Work' || state.filter.context === 'Personal')
-      ? state.filter.context : 'Personal';
+    const ctx = todayAdd.context
+      || (state.filter.context === 'Work' || state.filter.context === 'Personal' ? state.filter.context : 'Personal');
     try {
-      const created = await createTaskRow({ title: v, status: 'not-started', context: ctx, source: 'Manual' });
+      const created = await createTaskRow({
+        title: v, status: 'not-started', source: 'Manual',
+        context: ctx,
+        timing: todayAdd.due || undefined,
+        effort: todayAdd.effort || undefined,
+        parentId: todayAdd.project || undefined,
+      });
       state.tasks.unshift(created);
-      afterMutation();
+      afterMutation();   // re-renders Today; syncTodayAddForm restores the open form + sticky selections
       recordUndo({
         label: `add "${truncate(created.title)}"`,
         undo: () => deleteTask(created.id),
         redo: () => restoreTask(created),
       });
-      const input = document.getElementById('today-add-input');
-      if (input) input.focus();
+      const inp = document.getElementById('today-add-input');
+      if (inp) { inp.value = ''; inp.focus(); }
     } catch (e) {
       alert('Could not add task: ' + e.message);
     }
@@ -2037,6 +2109,7 @@
   function setupToday() {
     const root = document.getElementById('today-view');
     root.addEventListener('click', (e) => {
+      if (e.target.closest('#add-confirm')) { submitTodayAdd(); return; }
       const del = e.target.closest('[data-del]');
       if (del) { deleteTask(del.dataset.del); return; }
       const toggle = e.target.closest('[data-toggle]');
@@ -2048,12 +2121,40 @@
       const demote = e.target.closest('[data-demote]');
       if (demote) { patchTask(demote.dataset.demote, { status: 'in-progress' }); return; }
     });
+    // Reveal the inline field row when you start adding; default context from the view.
+    root.addEventListener('focusin', (e) => {
+      if (e.target.id === 'today-add-input' && !todayAdd.open) {
+        todayAdd.open = true;
+        if (!todayAdd.context && (state.filter.context === 'Work' || state.filter.context === 'Personal')) {
+          todayAdd.context = state.filter.context;
+        }
+        syncTodayAddForm();
+      }
+    });
+    // Keep the draft in sync as fields change (re-list projects when context changes).
+    root.addEventListener('change', (e) => {
+      if (e.target.id === 'add-context') { todayAdd.context = e.target.value; todayAdd.project = ''; syncTodayAddForm(); }
+      else if (e.target.id === 'add-due') todayAdd.due = e.target.value;
+      else if (e.target.id === 'add-effort') todayAdd.effort = e.target.value;
+      else if (e.target.id === 'add-project') todayAdd.project = e.target.value;
+    });
+    // Collapse the field row when focus leaves the add area and the title is empty.
+    root.addEventListener('focusout', (e) => {
+      const add = e.target.closest('.today-add');
+      if (!add) return;
+      setTimeout(() => {
+        const input = document.getElementById('today-add-input');
+        const active = document.activeElement;
+        if (todayAdd.open && input && !input.value.trim() && !(active && active.closest('.today-add'))) {
+          todayAdd.open = false;
+          syncTodayAddForm();
+        }
+      }, 0);
+    });
     root.addEventListener('keydown', (e) => {
       if (e.target.id === 'today-add-input' && e.key === 'Enter') {
         e.preventDefault();
-        const val = e.target.value;
-        e.target.value = '';
-        quickAddToday(val);
+        submitTodayAdd();
       }
     });
   }
