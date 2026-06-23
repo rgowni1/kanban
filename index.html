@@ -2696,10 +2696,19 @@
       patchTask(child.id, { title });
     });
     list.addEventListener('keydown', (e) => {
-      if (e.target.tagName !== 'INPUT' || e.target.type !== 'text') return;
-      if (e.key === 'Enter') {
+      if (e.key !== 'Enter') return;
+      const row = e.target.closest('.subtask-row');
+      if (!row) return;
+      if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
+        // Title entered → jump to this row's effort picker instead of adding the next.
         e.preventDefault();
-        e.target.blur();
+        e.target.blur();   // saves the title via focusout
+        const sel = row.querySelector('.subtask-effort');
+        if (sel) sel.focus();
+      } else if (e.target.classList.contains('subtask-effort')) {
+        // Effort set → commit it and add the next subtask.
+        e.preventDefault();
+        patchTask(row.dataset.childId, { effort: e.target.value || null });
         addSubtask();
       }
     });
