@@ -557,7 +557,8 @@
   }
   .subtask-row input[type="text"]:focus { border-bottom-color: var(--accent); }
   .subtask-row .subtask-effort {
-    flex: 0 0 auto; font: inherit; font-size: 11px; color: var(--muted);
+    flex: 0 0 auto; width: 48px;   /* override .drawer select width:100% so the title keeps its space */
+    font: inherit; font-size: 11px; color: var(--muted);
     background: var(--panel-2); border: 1px solid var(--border);
     border-radius: 6px; padding: 2px 4px; cursor: pointer;
   }
