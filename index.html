@@ -1155,7 +1155,7 @@
             <option value="next-30-days">Next 30 days</option>
           </select>
         </div>
-        <div class="field-row">
+        <div class="field-row" id="drawer-effort-row">
           <label for="drawer-effort">Effort</label>
           <select id="drawer-effort">
             <option value="">—</option>
@@ -1164,6 +1164,10 @@
             <option value="L">L — deep (½ day)</option>
             <option value="XL">XL — multi-day</option>
           </select>
+        </div>
+        <div class="field-row" id="drawer-effort-rollup" hidden>
+          <label>Effort</label>
+          <span class="effort-rollup-val">Σ rolled up from subtasks</span>
         </div>
         <div class="field-row">
           <label for="drawer-source-link">Source link</label>
@@ -1312,6 +1316,10 @@
   function projectProgress(id) {
     const kids = childrenOf(id);
     return { done: kids.filter(c => c.status === 'done').length, total: kids.length };
+  }
+  // A project's effort = the sum of its subtasks' points (leaf-level effort).
+  function projectEffortPoints(id) {
+    return childrenOf(id).reduce((sum, c) => sum + (POINTS[c.effort] || 0), 0);
   }
   // "Complete" = the task itself is done, or (a project whose) every subtask is done.
   function isComplete(t) {
@@ -1952,19 +1960,24 @@
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
-    const groupHeader = (g) => `
+    const groupHeader = (g) => {
+      const pts = projectEffortPoints(g.project.id);
+      return `
       <li class="today-group" data-open="${escapeHtml(g.project.id)}" title="Open project to edit">
         <span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span>
-        <span class="today-group-count">${g.kids.length}</span>
+        <span class="today-group-count">${g.kids.length}${pts ? ` · ${pts} pts` : ''}</span>
         <button class="today-del" data-del="${escapeHtml(g.project.id)}" title="Delete project + its subtasks">×</button>
       </li>`;
+    };
 
     // A project in Focus: show the project as a header card with its open subtasks nested beneath.
     const projectFocusCard = (t) => {
       const { done, total } = projectProgress(t.id);
+      const pts = projectEffortPoints(t.id);
       return `
       <li class="today-card focus today-proj-focus" data-demote="${escapeHtml(t.id)}" title="Click to move project back to In Progress">
         <span class="ctx-ico">📁</span><span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        ${pts ? `<span class="today-due">${pts} pts</span>` : ''}
         <span class="today-due">${done}/${total}</span>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open project">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete project + subtasks">×</button>
@@ -2397,7 +2410,8 @@
     if (isProject(task)) {
       const { done, total } = projectProgress(task.id);
       const complete = done === total ? "complete" : "";
-      badges.push(`<button class="badge project-chip ${complete}" data-open-project title="Open project">📁 ${done}/${total}</button>`);
+      const pts = projectEffortPoints(task.id);
+      badges.push(`<button class="badge project-chip ${complete}" data-open-project title="Open project">📁 ${done}/${total}${pts ? ` · ${pts}p` : ''}</button>`);
     } else if (task.subtasks && task.subtasks.length) {
       const done = task.subtasks.filter(s => s.done).length;
       const total = task.subtasks.length;
@@ -2508,6 +2522,14 @@
     // A project (has children) can't itself be nested; a child can't have its own subtasks.
     document.getElementById('drawer-parent-row').hidden = hasKids;
     document.getElementById('subtasks-section').hidden = isChild;
+    // Effort lives on leaf tasks; a project shows the rolled-up total instead.
+    document.getElementById('drawer-effort-row').hidden = hasKids;
+    const rollupRow = document.getElementById('drawer-effort-rollup');
+    rollupRow.hidden = !hasKids;
+    if (hasKids) {
+      rollupRow.querySelector('.effort-rollup-val').textContent =
+        `Σ ${projectEffortPoints(task.id)} pts (from subtasks)`;
+    }
     const sel = document.getElementById('drawer-parent');
     const opts = ['<option value="">— No project</option>'];
     // Only offer projects in the same context (a Work task nests under Work projects).
@@ -2731,6 +2753,8 @@
         context: task.context || 'Personal', source: 'Manual', parentId,
       });
       state.tasks.unshift(created);
+      // Effort now lives on the subtasks; clear the parent's own effort so it doesn't double-count.
+      if (task.effort) patchTask(parentId, { effort: null });
       afterMutation();              // refresh board + sidebar progress
       if (drawerTaskId !== parentId) return;   // drawer moved on while awaiting
       renderDrawerHierarchy();      // standalone task just became a project
