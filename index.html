@@ -344,12 +344,6 @@
   .filter-group[data-key="context"] button[data-value="Work"].active {
     background: #ede9fe; color: #5b21b6; border-color: transparent;
   }
-  .filter-group[data-key="timing"] button[data-value="today"].active {
-    background: #fee2e2; color: #991b1b; border-color: transparent;
-  }
-  .filter-group[data-key="timing"] button[data-value="tomorrow"].active {
-    background: #fef3c7; color: #92400e; border-color: transparent;
-  }
   .filter-group[data-key="timing"] button[data-value="this-week"].active {
     background: #dbeafe; color: #1e3a8a; border-color: transparent;
   }
@@ -374,8 +368,6 @@
   }
     [data-theme="dark"] .filter-group[data-key="context"] button[data-value="Personal"].active { background: #1e3a8a; color: #dbeafe; }
   [data-theme="dark"] .filter-group[data-key="context"] button[data-value="Work"].active { background: #4c1d95; color: #ede9fe; }
-  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="today"].active { background: #7f1d1d; color: #fecaca; }
-  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="tomorrow"].active { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="this-week"].active { background: #1e3a8a; color: #dbeafe; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-week"].active { background: #3730a3; color: #e0e7ff; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-30-days"].active { background: #1c1917; color: #e7e5e4; }
@@ -1085,11 +1077,9 @@
         <button data-value="context">Context</button>
       </div>
       <div class="filter-group" data-key="timing">
-        <button data-value="today">Today</button>
-        <button data-value="tomorrow">Tomorrow</button>
         <button data-value="this-week">This Week</button>
         <button data-value="next-week">Next Week</button>
-        <button data-value="next-30-days">Next 30d</button>
+        <button data-value="next-30-days">Later</button>
       </div>
       <div class="filter-group" data-key="staleness">
         <button data-value="fresh">Fresh</button>
@@ -1148,11 +1138,9 @@
           <label for="drawer-timing">Due</label>
           <select id="drawer-timing">
             <option value="">—</option>
-            <option value="today">Today</option>
-            <option value="tomorrow">Tomorrow</option>
             <option value="this-week">This Week</option>
             <option value="next-week">Next Week</option>
-            <option value="next-30-days">Next 30 days</option>
+            <option value="next-30-days">Later</option>
           </select>
         </div>
         <div class="field-row" id="drawer-effort-row">
@@ -1210,11 +1198,9 @@
     return state.tasks.filter(t => t.status === "focus" && !t.archived && t.context === ctx).length;
   }
   const TIMING_LABEL = {
-    "today": "Today",
-    "tomorrow": "Tomorrow",
     "this-week": "This Week",
     "next-week": "Next Week",
-    "next-30-days": "Next 30d",
+    "next-30-days": "Later",
   };
   const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
   const HISTORY_WEEKS = 12;
@@ -1234,11 +1220,9 @@
     },
     timing: {
       columns: [
-        { id: "today",        label: "Today" },
-        { id: "tomorrow",     label: "Tomorrow" },
         { id: "this-week",    label: "This Week" },
         { id: "next-week",    label: "Next Week" },
-        { id: "next-30-days", label: "Next 30 days" },
+        { id: "next-30-days", label: "Later" },
         { id: "__none__",     label: "—" },
       ],
       field: "timing",
@@ -1578,7 +1562,6 @@
     if (timing) row.timing = timing;
     if (parentId) row.parent_id = parentId;
     if (effort) row.effort = effort;
-    if (status === 'focus' && !row.timing) row.timing = 'today';
     const { data, error } = await supabase
       .from('tasks')
       .insert(row)
@@ -1905,8 +1888,9 @@
     const focus = state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus');
     // Pool = actionable items you could pull into focus: not done, not already
     // focused, and not a project container (you focus its tasks, not the wrapper).
+    const DUE_ORDER = { 'this-week': 0, 'next-week': 1, 'next-30-days': 2 };
     const byDueThenStatus = (a, b) => {
-      const ad = a.timing === 'today' ? 0 : 1, bd = b.timing === 'today' ? 0 : 1;
+      const ad = DUE_ORDER[a.timing] ?? 3, bd = DUE_ORDER[b.timing] ?? 3;
       if (ad !== bd) return ad - bd;
       return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
     };
@@ -1933,9 +1917,9 @@
       t.context === 'Work' ? `<span class="ctx-ico" title="Work">💼</span>`
       : t.context === 'Personal' ? `<span class="ctx-ico" title="Personal">🏠</span>`
       : `<span class="ctx-ico ctx-none" title="No context">·</span>`;
-    const dueChip = (t) => t.timing === 'today'
-      ? `<span class="today-due now">today</span>`
-      : (t.timing ? `<span class="today-due">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>` : '');
+    const dueChip = (t) => t.timing
+      ? `<span class="today-due${t.timing === 'this-week' ? ' now' : ''}">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>`
+      : '';
 
     const parentTitleOf = (t) => {
       if (!t.parentId) return null;
@@ -2033,11 +2017,9 @@
                 </select>
                 <select id="add-due" class="today-add-sel">
                   <option value="">Due…</option>
-                  <option value="today">Today</option>
-                  <option value="tomorrow">Tomorrow</option>
                   <option value="this-week">This Week</option>
                   <option value="next-week">Next Week</option>
-                  <option value="next-30-days">Next 30d</option>
+                  <option value="next-30-days">Later</option>
                 </select>
                 <select id="add-effort" class="today-add-sel">
                   <option value="">Effort…</option>
@@ -3127,7 +3109,6 @@
     const idx = state.tasks.findIndex(t => t.id === id);
     if (idx < 0) return;
     const before = state.tasks[idx];
-    if (patch.status === 'focus' && !('timing' in patch)) patch = { ...patch, timing: 'today' };
     if (!undoMgr.suspended) {
       const prev = {}, next = { ...patch };
       for (const k of Object.keys(patch)) prev[k] = before[k];

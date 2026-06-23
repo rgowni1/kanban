@@ -13,7 +13,7 @@ SERVER_NAME = "kanban"
 SERVER_VERSION = "0.1.0"
 
 STATUSES = ["inbox", "not-started", "in-progress", "focus", "done"]
-TIMINGS = ["today", "tomorrow", "this-week", "next-week", "next-30-days"]
+TIMINGS = ["this-week", "next-week", "next-30-days"]
 EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks", "archived", "created_at", "parent_id")
 EFFORT_POINTS = {"S": 1, "M": 2, "L": 5, "XL": 10}
 
@@ -182,8 +182,6 @@ def tool_create_task(args):
         if err:
             return error_content(err)
         row["parent_id"] = args["parent_id"]
-    if row["status"] == "focus" and "timing" not in row:
-        row["timing"] = "today"
     status, data = sb_request("POST", body=row)
     if status >= 400:
         return error_content(f"Supabase {status}: {data}")
@@ -256,8 +254,6 @@ def tool_update_task(args):
             patch["subtasks"] = normalize_subtasks(patch["subtasks"])
         except ValueError as e:
             return error_content(str(e))
-    if patch.get("status") == "focus" and "timing" not in patch:
-        patch["timing"] = "today"
     params = {"id": f"eq.{task_id}", "user_id": f"eq.{KANBAN_USER_ID}"}
     status, data = sb_request("PATCH", body=patch, params=params)
     if status >= 400:
@@ -422,7 +418,7 @@ TOOLS = [
                 "context": {"type": "string", "description": "e.g. Personal, Work"},
                 "source": {"type": "string"},
                 "source_link": {"type": "string"},
-                "timing": {"type": "string", "enum": TIMINGS, "description": "when it's due: today / tomorrow / this-week / next-week / next-30-days"},
+                "timing": {"type": "string", "enum": TIMINGS, "description": "planning horizon: this-week / next-week / next-30-days (shown as 'Later')"},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"], "description": "T-shirt size: S<30m, M=30m-2h, L=½ day, XL=multi-day"},
                 "parent_id": {"type": "string", "description": "id of the parent task (project) this belongs under. Omit for a top-level task/project."},
                 "subtasks": {
