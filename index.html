@@ -2403,8 +2403,11 @@
     document.getElementById('subtasks-section').hidden = isChild;
     const sel = document.getElementById('drawer-parent');
     const opts = ['<option value="">— No project</option>'];
+    // Only offer projects in the same context (a Work task nests under Work projects).
+    // If the task has no context yet, show all so the picker isn't empty.
     state.tasks
-      .filter(t => !t.parentId && t.id !== task.id && !t.archived)
+      .filter(t => !t.parentId && t.id !== task.id && !t.archived
+                && ((!task.context || t.context === task.context) || t.id === task.parentId))
       .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
       .forEach(t => opts.push(`<option value="${t.id}">${escapeHtml(t.title)}</option>`));
     sel.innerHTML = opts.join("");
