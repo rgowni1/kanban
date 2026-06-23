@@ -550,6 +550,12 @@
     outline: none; border-bottom: 1px solid transparent;
   }
   .subtask-row input[type="text"]:focus { border-bottom-color: var(--accent); }
+  .subtask-row .subtask-effort {
+    flex: 0 0 auto; font: inherit; font-size: 11px; color: var(--muted);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 4px; cursor: pointer;
+  }
+  .subtask-row .subtask-effort:focus { outline: none; border-color: var(--accent); }
   .subtask-row.done input[type="text"] {
     text-decoration: line-through; color: var(--muted);
   }
@@ -2473,9 +2479,13 @@
     const row = document.createElement('div');
     row.className = 'subtask-row' + (child.status === 'done' ? ' done' : '');
     row.dataset.childId = child.id;
+    const eff = child.effort || '';
     row.innerHTML = `
       <input type="checkbox" ${child.status === 'done' ? 'checked' : ''} title="Mark done" />
       <input type="text" value="${escapeHtml(child.title)}" placeholder="Subtask…" />
+      <select class="subtask-effort" title="Effort">
+        ${['', 'S', 'M', 'L', 'XL'].map(v => `<option value="${v}" ${v === eff ? 'selected' : ''}>${v || '·'}</option>`).join('')}
+      </select>
       <button class="subtask-open" title="Open as its own task">↗</button>
       <button class="del" title="Remove">×</button>
     `;
@@ -2661,9 +2671,14 @@
     const list = document.getElementById('subtasks-list');
     list.addEventListener('change', (e) => {
       if (!drawerTaskId) return;
-      if (e.target.type !== 'checkbox') return;
       const row = e.target.closest('.subtask-row');
+      if (!row) return;
       const childId = row.dataset.childId;
+      if (e.target.classList.contains('subtask-effort')) {
+        patchTask(childId, { effort: e.target.value || null });
+        return;
+      }
+      if (e.target.type !== 'checkbox') return;
       const done = e.target.checked;
       patchTask(childId, { status: done ? 'done' : 'not-started' });
       row.classList.toggle('done', done);
