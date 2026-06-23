@@ -13,7 +13,7 @@ SERVER_NAME = "kanban"
 SERVER_VERSION = "0.1.0"
 
 STATUSES = ["inbox", "not-started", "in-progress", "focus", "done"]
-TIMINGS = ["this-week", "next-week", "next-30-days"]
+TIMINGS = ["this-week", "next-week", "next-30-days", "ongoing"]
 EDITABLE_FIELDS = ("title", "description", "status", "context", "source", "source_link", "timing", "effort", "subtasks", "archived", "created_at", "parent_id")
 EFFORT_POINTS = {"S": 1, "M": 2, "L": 5, "XL": 10}
 
@@ -418,7 +418,7 @@ TOOLS = [
                 "context": {"type": "string", "description": "e.g. Personal, Work"},
                 "source": {"type": "string"},
                 "source_link": {"type": "string"},
-                "timing": {"type": "string", "enum": TIMINGS, "description": "planning horizon: this-week / next-week / next-30-days (shown as 'Later')"},
+                "timing": {"type": "string", "enum": TIMINGS, "description": "planning horizon: this-week / next-week / next-30-days (shown as 'Later') / ongoing (no fixed week)"},
                 "effort": {"type": "string", "enum": ["S", "M", "L", "XL"], "description": "T-shirt size: S<30m, M=30m-2h, L=½ day, XL=multi-day"},
                 "parent_id": {"type": "string", "description": "id of the parent task (project) this belongs under. Omit for a top-level task/project."},
                 "subtasks": {

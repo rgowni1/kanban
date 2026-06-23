@@ -306,11 +306,13 @@
   .badge.timing-this-week    { background: #dbeafe; color: #1e3a8a; }
   .badge.timing-next-week    { background: #e0e7ff; color: #3730a3; }
   .badge.timing-next-30-days { background: #f1f5f9; color: #475569; }
+  .badge.timing-ongoing      { background: #ccfbf1; color: #115e59; }
     [data-theme="dark"] .badge.timing-today { background: #7f1d1d; color: #fecaca; }
   [data-theme="dark"] .badge.timing-tomorrow { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .badge.timing-this-week { background: #1e3a8a; color: #dbeafe; }
   [data-theme="dark"] .badge.timing-next-week { background: #3730a3; color: #e0e7ff; }
   [data-theme="dark"] .badge.timing-next-30-days { background: #292524; color: #e7e5e4; }
+  [data-theme="dark"] .badge.timing-ongoing { background: #134e4a; color: #99f6e4; }
 
   /* Toolbar (filter rows) */
   .toolbar {
@@ -353,6 +355,9 @@
   .filter-group[data-key="timing"] button[data-value="next-30-days"].active {
     background: #f1f5f9; color: #475569; border-color: transparent;
   }
+  .filter-group[data-key="timing"] button[data-value="ongoing"].active {
+    background: #ccfbf1; color: #115e59; border-color: transparent;
+  }
   .filter-group[data-key="staleness"] button[data-value="fresh"].active {
     background: #d1fae5; color: #065f46; border-color: transparent;
   }
@@ -371,6 +376,7 @@
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="this-week"].active { background: #1e3a8a; color: #dbeafe; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-week"].active { background: #3730a3; color: #e0e7ff; }
   [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="next-30-days"].active { background: #1c1917; color: #e7e5e4; }
+  [data-theme="dark"] .filter-group[data-key="timing"] button[data-value="ongoing"].active { background: #134e4a; color: #99f6e4; }
   [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="fresh"].active { background: #064e3b; color: #6ee7b7; }
   [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="stale"].active { background: #7f1d1d; color: #fecaca; }
   [data-theme="dark"] .filter-group[data-key="staleness"] button[data-value="very-stale"].active { background: #fafaf9; color: #1c1917; }
@@ -1086,6 +1092,7 @@
         <button data-value="this-week">This Week</button>
         <button data-value="next-week">Next Week</button>
         <button data-value="next-30-days">Later</button>
+        <button data-value="ongoing">Ongoing</button>
       </div>
       <div class="filter-group" data-key="staleness">
         <button data-value="fresh">Fresh</button>
@@ -1147,6 +1154,7 @@
             <option value="this-week">This Week</option>
             <option value="next-week">Next Week</option>
             <option value="next-30-days">Later</option>
+            <option value="ongoing">Ongoing</option>
           </select>
         </div>
         <div class="field-row" id="drawer-effort-row">
@@ -1207,6 +1215,7 @@
     "this-week": "This Week",
     "next-week": "Next Week",
     "next-30-days": "Later",
+    "ongoing": "Ongoing",
   };
   const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
   const HISTORY_WEEKS = 12;
@@ -1229,6 +1238,7 @@
         { id: "this-week",    label: "This Week" },
         { id: "next-week",    label: "Next Week" },
         { id: "next-30-days", label: "Later" },
+        { id: "ongoing",      label: "Ongoing" },
         { id: "__none__",     label: "—" },
       ],
       field: "timing",
@@ -1894,7 +1904,7 @@
     const focus = state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus');
     // Pool = actionable items you could pull into focus: not done, not already
     // focused, and not a project container (you focus its tasks, not the wrapper).
-    const DUE_ORDER = { 'this-week': 0, 'next-week': 1, 'next-30-days': 2 };
+    const DUE_ORDER = { 'this-week': 0, 'next-week': 1, 'next-30-days': 2, 'ongoing': 3 };
     const byDueThenStatus = (a, b) => {
       const ad = DUE_ORDER[a.timing] ?? 3, bd = DUE_ORDER[b.timing] ?? 3;
       if (ad !== bd) return ad - bd;
@@ -2026,6 +2036,7 @@
                   <option value="this-week">This Week</option>
                   <option value="next-week">Next Week</option>
                   <option value="next-30-days">Later</option>
+                  <option value="ongoing">Ongoing</option>
                 </select>
                 <select id="add-effort" class="today-add-sel">
                   <option value="">Effort…</option>

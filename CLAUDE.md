@@ -38,7 +38,7 @@ source       text                    -- e.g. "Manual", "Notion"
 source_link  text
 notion_id    text                    -- import dedup key (legacy)
 description  text                    -- markdown
-timing       text                    -- this-week | next-week | next-30-days (UI label "Later"); planning horizon only
+timing       text                    -- this-week | next-week | next-30-days ("Later") | ongoing (no fixed week); planning horizon only
 effort       text                    -- S | M | L | XL
 parent_id    uuid          FK tasks(id) ON DELETE CASCADE  -- 2-level hierarchy: a child task's project
 subtasks     jsonb         NOT NULL  -- LEGACY. Migrated to child tasks; kept at '[]'. Do not write new data here.
