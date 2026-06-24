@@ -601,6 +601,9 @@
   .sidebar-item .project-progress.complete { color: #15803d; }
   [data-theme="dark"] .sidebar-item .project-progress.complete { color: #6ee7b7; }
   #project-list { display: flex; flex-direction: column; }
+  .sidebar-newproject { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .sidebar-newproject:hover { color: var(--accent); }
+  .sidebar-newproject .icon { font-weight: 600; }
   .sidebar-item.folder-item { display: flex; align-items: center; gap: 6px; font-weight: 600; }
   .folder-caret {
     flex: 0 0 auto; width: 12px; font-size: 10px; color: var(--muted);
@@ -1055,6 +1058,7 @@
       <div class="sidebar-section-title">Projects</div>
       <button class="sidebar-item project-item active" data-project="" data-target="kanban"><span class="icon">🗂️</span> All Tasks</button>
       <div id="project-list"></div>
+      <button class="sidebar-item sidebar-newproject" id="new-project-btn"><span class="icon">＋</span> New Project</button>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Personal Intelligence</div>
@@ -1342,6 +1346,23 @@
   }
   function projectById(id) {
     return state.tasks.find(t => t.id === id) || null;
+  }
+  // Create a parent + its first (blank) subtask so it's a project immediately,
+  // then open it with the title selected for renaming.
+  async function createNewProject() {
+    const ctx = (state.filter.context === 'Work' || state.filter.context === 'Personal') ? state.filter.context : 'Personal';
+    try {
+      const proj = await createTaskRow({ title: 'New Project', status: 'not-started', context: ctx, source: 'Manual' });
+      state.tasks.unshift(proj);
+      const child = await createTaskRow({ title: '', status: 'not-started', context: ctx, source: 'Manual', parentId: proj.id });
+      state.tasks.unshift(child);
+      afterMutation();
+      openDrawer(proj.id);
+      const titleEl = document.getElementById('drawer-title');
+      if (titleEl) { titleEl.focus(); titleEl.select(); }
+    } catch (e) {
+      alert('Could not create project: ' + e.message);
+    }
   }
 
   // === Auth ===
@@ -3340,6 +3361,8 @@
     }
     const btn = e.target.closest("button");
     if (!btn) return;
+
+    if (btn.id === 'new-project-btn') { createNewProject(); return; }
 
     // Context folder: scope the board to Work / Personal.
     if (btn.hasAttribute('data-folder')) {
