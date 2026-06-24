@@ -827,6 +827,12 @@
     display: flex; flex-direction: column; gap: 8px;
     flex: 1;
   }
+  .focus-add-input {
+    width: 100%; font: inherit; font-size: 14px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 12px; outline: none; margin-bottom: 14px;
+  }
+  .focus-add-input:focus { border-color: var(--accent); }
   .focus-sections { display: flex; flex-direction: column; gap: 12px; flex: 1; }
   .focus-section {
     padding: 6px 4px;
@@ -2244,6 +2250,7 @@
               <div class="focus-col-title">Focus</div>
               <div class="focus-col-count">${focusTasks.length} ${focusTasks.length === 1 ? 'task' : 'tasks'}</div>
             </div>
+            <input id="focus-add-input" class="focus-add-input" type="text" placeholder="+ Add a Focus task…" autocomplete="off" />
             <div class="focus-sections">${focusSectionsHtml}</div>
           </div>
           <div class="focus-col focus-col-done" data-status="done">
@@ -2356,6 +2363,36 @@
       if (!task || task.status === 'done') return;
       patchTask(id, { status: 'done' });
     });
+
+    // Quick-add a Focus task directly in this view (lands in "No estimate" — drag to size it).
+    const addInput = root.querySelector('#focus-add-input');
+    if (addInput) {
+      addInput.addEventListener('keydown', async (e) => {
+        if (e.key !== 'Enter') return;
+        const v = addInput.value.trim();
+        if (!v) return;
+        const c = (state.filter.context === 'Work' || state.filter.context === 'Personal') ? state.filter.context : 'Personal';
+        if (focusCountFor(c) >= FOCUS_CAP) {
+          flashStatus(`${c} Focus is full (${FOCUS_CAP}) — finish or drop one first`);
+          return;
+        }
+        addInput.value = '';
+        try {
+          const created = await createTaskRow({ title: v, status: 'focus', context: c, source: 'Manual' });
+          state.tasks.unshift(created);
+          afterMutation();   // re-renders the Focus view
+          recordUndo({
+            label: `add "${truncate(created.title)}"`,
+            undo: () => deleteTask(created.id),
+            redo: () => restoreTask(created),
+          });
+          const inp = document.getElementById('focus-add-input');
+          if (inp) inp.focus();
+        } catch (err) {
+          alert('Could not add task: ' + err.message);
+        }
+      });
+    }
   }
 
   function reorderFocus(draggedId, targetId, insertAbove, targetEffort) {
