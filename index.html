@@ -293,6 +293,12 @@
   .effort-opt:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
   [data-theme="dark"] .effort-opt { background: #422006; color: #fde68a; }
   [data-theme="dark"] .effort-opt:hover { background: #f59e0b; color: #0c0a09; }
+  /* EOW "done, no effort" review list (Stats page) */
+  .eow-untagged h3 { color: #b45309; }
+  .eow-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .eow-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; }
+  .eow-title { flex: 1; font-size: 13px; }
+  [data-theme="dark"] .eow-row { background: #292524; border-color: #78350f; }
     [data-theme="dark"] .badge.effort-S { background: #064e3b; color: #6ee7b7; }
   [data-theme="dark"] .badge.effort-M { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .badge.effort-L { background: #7f1d1d; color: #fecaca; }
@@ -3074,8 +3080,31 @@
 
   function renderStatsPage() {
     const el = document.getElementById('stats-page');
+    // Bind the inline effort-chip handler once (delegation survives re-renders).
+    if (!el.dataset.effortBound) {
+      el.dataset.effortBound = '1';
+      el.addEventListener('click', (e) => {
+        const ep = e.target.closest('[data-set-effort]');
+        if (ep) patchTask(ep.dataset.task, { effort: ep.dataset.setEffort });
+      });
+    }
     const today = new Date();
     const currentStart = startOfWeek(today);
+    // End-of-week nudge: tasks completed THIS week with no effort tagged (skip projects).
+    const doneUntagged = workTasksCompletedInRange(currentStart, addDays(currentStart, 7))
+      .filter(t => !t.effort && !isProject(t));
+    const eowHtml = doneUntagged.length ? `
+        <div class="stats-section eow-untagged">
+          <h3>🔻 Done this week · no effort <span class="section-sub">tap a size to tag — keeps weekly points honest</span></h3>
+          <ul class="eow-list">
+            ${doneUntagged.map(t => `
+              <li class="eow-row">
+                <span class="eow-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+                <span class="effort-pick">${['S','M','L','XL']
+                  .map(e => `<button class="effort-opt" data-set-effort="${e}" data-task="${escapeHtml(t.id)}" title="Set effort ${e}">${e}</button>`).join('')}</span>
+              </li>`).join('')}
+          </ul>
+        </div>` : '';
     const weeks = [];
     for (let i = 0; i < HISTORY_WEEKS; i++) {
       const start = addDays(currentStart, -7 * i);
@@ -3180,7 +3209,7 @@
             <div class="sub">work tasks missing effort</div>
           </div>
         </div>
-
+        ${eowHtml}
         <div class="stats-section">
           <h3>Points per week</h3>
           <div class="points-chart">${chartHtml}</div>
