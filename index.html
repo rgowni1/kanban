@@ -1338,10 +1338,12 @@
     return childrenOf(id).reduce((sum, c) => sum + (POINTS[c.effort] || 0), 0);
   }
   // "Complete" = the task itself is done, or (a project whose) every subtask is done.
+  // Completeness follows the task's OWN status — never inferred from children.
+  // (Previously a parent whose live subtasks were all done was treated as complete,
+  // which silently hid still-active projects from pickers once their first task
+  // finished. A project is done only when you mark it done.)
   function isComplete(t) {
-    if (t.status === 'done') return true;
-    const kids = childrenOf(t.id);
-    return kids.length > 0 && kids.every(c => c.status === 'done');
+    return t.status === 'done';
   }
   // Top-level projects (have children), excluding completed ones, most-recently-updated first.
   function allProjects() {
