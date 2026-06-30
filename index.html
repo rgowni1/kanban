@@ -2119,8 +2119,12 @@
     dueSel.value = todayAdd.due;
     effSel.value = todayAdd.effort;
     const opts = ['<option value="">No project</option>'];
-    allProjects()
-      .filter(p => !todayAdd.context || p.context === todayAdd.context)
+    // Eligible parents = any top-level, open task — NOT just ones that already
+    // have children. This lets you file the first task under a brand-new project
+    // (isProject() requires ≥1 child, so empty projects wouldn't appear otherwise).
+    state.tasks
+      .filter(p => !p.parentId && !p.archived && !isComplete(p)
+        && (!todayAdd.context || p.context === todayAdd.context))
       .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
       .forEach(p => opts.push(`<option value="${p.id}">${escapeHtml(p.title)}</option>`));
     projSel.innerHTML = opts.join('');
