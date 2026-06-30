@@ -2123,7 +2123,7 @@
     // have children. This lets you file the first task under a brand-new project
     // (isProject() requires ≥1 child, so empty projects wouldn't appear otherwise).
     state.tasks
-      .filter(p => !p.parentId && !p.archived && !isComplete(p)
+      .filter(p => !p.parentId && !p.archived && p.status !== 'done'
         && (!todayAdd.context || p.context === todayAdd.context))
       .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
       .forEach(p => opts.push(`<option value="${p.id}">${escapeHtml(p.title)}</option>`));
