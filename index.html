@@ -1681,6 +1681,7 @@
       if (needsEffort) {
         if (t.context !== "Work") return false;
         if (t.status === "done") return false;
+        if (isProject(t)) return false;   // projects roll up effort from subtasks — don't flag them
         if (t.effort) return false;
         return true;
       }
@@ -3017,7 +3018,9 @@
   }
 
   function untaggedWorkOpenCount() {
-    return state.tasks.filter(t => t.context === "Work" && t.status !== "done" && !t.effort).length;
+    // Projects don't carry their own effort (it rolls up from subtasks via
+    // projectEffortPoints), so they're never "untagged" — only real leaf tasks count.
+    return state.tasks.filter(t => t.context === "Work" && t.status !== "done" && !t.effort && !isProject(t)).length;
   }
 
   function renderStatsStrip() {
