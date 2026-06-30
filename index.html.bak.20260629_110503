@@ -659,10 +659,6 @@
     font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--muted); padding: 12px 6px 2px; cursor: pointer; border-radius: 6px;
   }
-  .today-group-caret {
-    flex: 0 0 auto; width: 14px; font-size: 10px; color: var(--muted);
-    display: inline-flex; justify-content: center; cursor: pointer;
-  }
   .today-group:hover .today-group-name { color: var(--accent); }
   .today-group-count { margin-left: auto; font-weight: 500; }
   .today-group .today-del { font-size: 16px; margin-left: 4px; }
@@ -1926,17 +1922,6 @@
   // === Today view (clean daily sandbox) ===
   const POOL_STATUS_ORDER = { 'in-progress': 0, 'not-started': 1, 'inbox': 2 };
 
-  // Collapsed project groups in the Today "Available" pane (persisted).
-  const AVAIL_COLLAPSE_KEY = 'kanban.availCollapsed';
-  function loadAvailCollapsed() {
-    try { const v = JSON.parse(localStorage.getItem(AVAIL_COLLAPSE_KEY) || '{}'); return (v && typeof v === 'object') ? v : {}; }
-    catch { return {}; }
-  }
-  function saveAvailCollapsed() {
-    try { localStorage.setItem(AVAIL_COLLAPSE_KEY, JSON.stringify(availCollapsed)); } catch {}
-  }
-  let availCollapsed = loadAvailCollapsed();
-
   // Inline add-form draft (persists across the Today re-renders).
   const todayAdd = { open: false, context: '', due: '', effort: '', project: '' };
 
@@ -2004,11 +1989,10 @@
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
-    const groupHeader = (g, collapsed) => {
+    const groupHeader = (g) => {
       const pts = projectEffortPoints(g.project.id);
       return `
       <li class="today-group" data-open="${escapeHtml(g.project.id)}" title="Open project to edit">
-        <span class="today-group-caret" data-toggle-group="${escapeHtml(g.project.id)}" title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▸' : '▾'}</span>
         <span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span>
         <span class="today-group-count">${g.kids.length}${pts ? ` · ${pts} pts` : ''}</span>
         <button class="today-del" data-del="${escapeHtml(g.project.id)}" title="Delete project + its subtasks">×</button>
@@ -2053,10 +2037,7 @@
     const poolCount = poolTasks.length;
     const poolBody = poolCount
       ? standalone.map(poolCard).join('')
-        + projectGroups.map(g => {
-            const collapsed = !!availCollapsed[g.project.id];
-            return groupHeader(g, collapsed) + (collapsed ? '' : g.kids.map(poolCard).join(''));
-          }).join('')
+        + projectGroups.map(g => groupHeader(g) + g.kids.map(poolCard).join('')).join('')
       : `<li class="today-empty">Nothing waiting — add one above. 🎉</li>`;
 
     root.innerHTML = `
@@ -2170,14 +2151,6 @@
     const root = document.getElementById('today-view');
     root.addEventListener('click', (e) => {
       if (e.target.closest('#add-confirm')) { submitTodayAdd(); return; }
-      const groupCaret = e.target.closest('[data-toggle-group]');
-      if (groupCaret) {
-        const pid = groupCaret.dataset.toggleGroup;
-        availCollapsed[pid] = !availCollapsed[pid];
-        saveAvailCollapsed();
-        renderToday();
-        return;
-      }
       const del = e.target.closest('[data-del]');
       if (del) { deleteTask(del.dataset.del); return; }
       const toggle = e.target.closest('[data-toggle]');
