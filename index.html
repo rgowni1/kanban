@@ -287,6 +287,12 @@
   .badge.effort-M { background: #fef3c7; color: #92400e; }
   .badge.effort-L { background: #fee2e2; color: #991b1b; }
   .badge.effort-XL { background: #fce7f3; color: #9d174d; }
+  /* One-click effort picker (needs-effort view) */
+  .effort-pick { display: inline-flex; gap: 3px; }
+  .effort-opt { font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: #fff7ed; color: #92400e; cursor: pointer; }
+  .effort-opt:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+  [data-theme="dark"] .effort-opt { background: #422006; color: #fde68a; }
+  [data-theme="dark"] .effort-opt:hover { background: #f59e0b; color: #0c0a09; }
     [data-theme="dark"] .badge.effort-S { background: #064e3b; color: #6ee7b7; }
   [data-theme="dark"] .badge.effort-M { background: #78350f; color: #fde68a; }
   [data-theme="dark"] .badge.effort-L { background: #7f1d1d; color: #fecaca; }
@@ -1359,7 +1365,7 @@
   async function createNewProject() {
     const ctx = (state.filter.context === 'Work' || state.filter.context === 'Personal') ? state.filter.context : 'Personal';
     try {
-      const proj = await createTaskRow({ title: 'New Project', status: 'not-started', context: ctx, source: 'Manual' });
+      const proj = await createTaskRow({ title: 'New Project', status: 'not-started', context: ctx, source: 'Manual', effort: null });
       state.tasks.unshift(proj);
       const child = await createTaskRow({ title: '', status: 'not-started', context: ctx, source: 'Manual', parentId: proj.id });
       state.tasks.unshift(child);
@@ -1612,7 +1618,11 @@
     const row = { title, status, context, source, user_id: currentUser.id };
     if (timing) row.timing = timing;
     if (parentId) row.parent_id = parentId;
-    if (effort) row.effort = effort;
+    // Default new tasks to Medium so nothing starts untagged. Pass effort:null to
+    // opt out (project containers — their effort rolls up from subtasks). A standalone
+    // task that later becomes a project has its own effort cleared in addSubtask().
+    const eff = (effort === undefined || effort === '') ? 'M' : effort;
+    if (eff) row.effort = eff;
     const { data, error } = await supabase
       .from('tasks')
       .insert(row)
@@ -2499,6 +2509,10 @@
     }
     if (task.effort) {
       badges.push(`<span class="badge effort effort-${task.effort}">${escapeHtml(task.effort)}</span>`);
+    } else if (state.filter.needsEffort && !isProject(task)) {
+      // One-click tagging in the needs-effort view: tap a size to set it inline.
+      badges.push(`<span class="effort-pick">${['S','M','L','XL']
+        .map(e => `<button class="effort-opt" data-set-effort="${e}" title="Set effort ${e}">${e}</button>`).join('')}</span>`);
     }
     if (isProject(task)) {
       const { done, total } = projectProgress(task.id);
@@ -2522,6 +2536,8 @@
     `;
     el.addEventListener("click", (e) => {
       if (e.target.closest(".del")) return;
+      const ep = e.target.closest("[data-set-effort]");
+      if (ep) { e.stopPropagation(); patchTask(task.id, { effort: ep.dataset.setEffort }); return; }
       if (e.target.closest("[data-open-project]")) {
         state.project = task.id;
         applyView();
