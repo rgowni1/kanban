@@ -1687,19 +1687,22 @@
     const { context, timing, staleness, needsEffort } = state.filter;
     return state.tasks.filter(t => {
       if (t.archived) return false;
-      // Project scope: a selected project shows only its children;
-      // "All Tasks" (project === null) shows top-level items and hides children.
-      if (state.project) {
-        if (t.parentId !== state.project) return false;
-      } else if (t.parentId) {
-        return false;
-      }
+      // needs-effort is a cross-cutting "show me everything untagged" filter — it must
+      // ignore project scope, otherwise the All-Tasks guard below hides the untagged
+      // subtasks it's meant to surface (badge count would say N but board shows 0).
       if (needsEffort) {
         if (t.context !== "Work") return false;
         if (t.status === "done") return false;
         if (isProject(t)) return false;   // projects roll up effort from subtasks — don't flag them
         if (t.effort) return false;
         return true;
+      }
+      // Project scope: a selected project shows only its children;
+      // "All Tasks" (project === null) shows top-level items and hides children.
+      if (state.project) {
+        if (t.parentId !== state.project) return false;
+      } else if (t.parentId) {
+        return false;
       }
       if (context !== "all" && t.context !== context) return false;
       if (timing !== "all" && t.timing !== timing) return false;
