@@ -1295,7 +1295,7 @@
         { id: "very-stale", label: "Very Stale" },
       ],
       field: null,
-      extract: t => t.staleness?.level || null,
+      extract: t => stalenessOf(t)?.level || null,
       droppable: false,
     },
     context: {
@@ -1355,6 +1355,11 @@
   }
   function isProject(t) {
     return !t.parentId && childrenOf(t.id).length > 0;
+  }
+  // Projects are containers — their created-date "age" is meaningless, so they carry
+  // no staleness: no Stale/Very Stale tag, and they're excluded from the Age view/filter.
+  function stalenessOf(t) {
+    return isProject(t) ? null : t.staleness;
   }
   function projectProgress(id) {
     const kids = childrenOf(id);
@@ -1721,7 +1726,7 @@
       }
       if (context !== "all" && t.context !== context) return false;
       if (timing !== "all" && t.timing !== timing) return false;
-      if (staleness !== "all" && (t.staleness?.level || null) !== staleness) return false;
+      if (staleness !== "all" && (stalenessOf(t)?.level || null) !== staleness) return false;
       return true;
     });
   }
@@ -1981,8 +1986,11 @@
     const root = document.getElementById('today-view');
     const ctx = state.filter.context;
     const inContext = (t) => ctx === 'all' || t.context === ctx;
-    // Focus = what you're committed to today.
-    const focus = state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus');
+    // Focus = what you're committed to today. Keep the saved drag order in sync
+    // against the FULL focus set (both contexts) so the hidden context isn't pruned,
+    // then narrow to the active context — same ordering the board's focus column uses.
+    syncFocusOrder(state.tasks.filter(t => !t.archived && t.status === 'focus'));
+    const focus = sortByFocusOrder(state.tasks.filter(t => !t.archived && inContext(t) && t.status === 'focus'));
     // Pool = actionable items you could pull into focus: not done, not already
     // focused, and not a project container (you focus its tasks, not the wrapper).
     const DUE_ORDER = { 'this-week': 0, 'next-week': 1, 'next-30-days': 2, 'ongoing': 3 };
@@ -1991,12 +1999,16 @@
       if (ad !== bd) return ad - bd;
       return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
     };
-    // A focused project shows its open subtasks nested under it (below), so keep
-    // those out of the Available pool to avoid listing them in two places.
     const focusedProjectIds = new Set(focus.filter(isProject).map(t => t.id));
+    // A project focused as a WHOLE (no individual subtask focused) shows ALL its open
+    // subtasks nested in Focus (focusNested falls back to `open`), so keep those out of
+    // the pool. But if you focused a SPECIFIC subtask, only that one shows nested — its
+    // unfocused siblings must stay in Available so you can still pull them in.
+    const wholeFocusedProjectIds = new Set(
+      [...focusedProjectIds].filter(pid => !childrenOf(pid).some(c => c.status === 'focus')));
     const poolTasks = state.tasks.filter(t =>
       !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t)
-      && !(t.parentId && focusedProjectIds.has(t.parentId)));
+      && !(t.parentId && wholeFocusedProjectIds.has(t.parentId)));
     // Standalone tasks render flat; subtasks group under their project.
     const standalone = poolTasks.filter(t => !t.parentId).sort(byDueThenStatus);
     const byParent = new Map();
@@ -2290,8 +2302,9 @@
         const label = TIMING_LABEL[task.timing] || task.timing;
         badges.push(`<span class="badge timing timing-${task.timing}">${escapeHtml(label)}</span>`);
       }
-      if (task.staleness) {
-        badges.push(`<span class="badge staleness stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`);
+      const st = stalenessOf(task);
+      if (st) {
+        badges.push(`<span class="badge staleness stale-${st.level}">${escapeHtml(st.label)}</span>`);
       }
       return `
         <li class="focus-card" draggable="true" data-id="${escapeHtml(task.id)}">
@@ -2524,8 +2537,9 @@
         : `<span class="badge">${task.source}</span>`;
       badges.push(link);
     }
-    if (task.staleness) {
-      badges.push(`<span class="badge staleness stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`);
+    const st = stalenessOf(task);
+    if (st) {
+      badges.push(`<span class="badge staleness stale-${st.level}">${escapeHtml(st.label)}</span>`);
     }
     if (task.timing) {
       const label = TIMING_LABEL[task.timing] || task.timing;
@@ -2687,13 +2701,18 @@
     if (!task) { el.innerHTML = ""; return; }
     const rows = [];
     if (task.createdAt) {
-      const age = task.staleness
-        ? `<span class="ts-age stale-${task.staleness.level}">${escapeHtml(task.staleness.label)}</span>`
+      const st = stalenessOf(task);
+      const age = st
+        ? `<span class="ts-age stale-${st.level}">${escapeHtml(st.label)}</span>`
+        : "";
+      // Projects have no staleness, so no age tag and no reset control for them.
+      const reset = st !== null || !isProject(task)
+        ? `<button class="ts-reset" id="reset-staleness" title="Reset staleness — set Created to now">↻ Reset</button>`
         : "";
       rows.push(`<div class="ts-row ts-created">
         <span class="ts-label">Created</span>
         <span class="ts-created-val">${escapeHtml(formatFullDate(task.createdAt))} ${age}</span>
-        <button class="ts-reset" id="reset-staleness" title="Reset staleness — set Created to now">↻ Reset</button>
+        ${reset}
       </div>`);
     }
     if (task.completedAt) {
