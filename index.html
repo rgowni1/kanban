@@ -1248,7 +1248,11 @@
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
 
-  const FOCUS_CAP = 5;  // per context (Work / Personal each get their own cap)
+  // Per-context Focus caps. Work runs higher (3-3-3: 1 deep + ~3 urgent + ~3 maintenance);
+  // Personal stays lean. focusCapFor() falls back to the default for any other context.
+  const FOCUS_CAPS = { Work: 7, Personal: 5 };
+  const FOCUS_CAP_DEFAULT = 5;
+  function focusCapFor(ctx) { return FOCUS_CAPS[ctx] ?? FOCUS_CAP_DEFAULT; }
   // Count live focus tasks in a given context — task-level (each focused task,
   // including individual subtasks, counts 1). The cap is enforced per-context.
   function focusCountFor(ctx) {
@@ -1864,11 +1868,12 @@
       if (isFocusCol) {
         if (state.filter.context !== "all") {
           // Viewing a single context — tasks are already scoped to it.
-          overCap = tasks.length > FOCUS_CAP;
-          countLabel = `${tasks.length}/${FOCUS_CAP}`;
+          const capCtx = state.filter.context;
+          overCap = tasks.length > focusCapFor(capCtx);
+          countLabel = `${tasks.length}/${focusCapFor(capCtx)}`;
         } else {
           // "All" view — cap is per-context, so flag if any one context is over.
-          overCap = focusCountFor("Work") > FOCUS_CAP || focusCountFor("Personal") > FOCUS_CAP;
+          overCap = focusCountFor("Work") > focusCapFor("Work") || focusCountFor("Personal") > focusCapFor("Personal");
           countLabel = `${tasks.length}`;
         }
       }
@@ -1909,8 +1914,8 @@
           if (grouping.extract(task) === col.id) return;
           if (state.groupBy === "status" && col.id === "focus") {
             const ctx = task.context;
-            if (focusCountFor(ctx) >= FOCUS_CAP) {
-              setStatus(`${ctx || "Uncategorized"} Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+            if (focusCountFor(ctx) >= focusCapFor(ctx)) {
+              setStatus(`${ctx || "Uncategorized"} Focus cap (${focusCapFor(ctx)}) reached — drop one before adding`);
               setTimeout(() => setStatus(""), 3000);
               return;
             }
@@ -2184,8 +2189,8 @@
   function promoteToFocus(id) {
     const t = state.tasks.find(x => x.id === id);
     if (!t) return;
-    if (focusCountFor(t.context) >= FOCUS_CAP) {
-      flashStatus(`${t.context || 'Uncategorized'} Focus is full (${FOCUS_CAP}) — finish or drop one first`);
+    if (focusCountFor(t.context) >= focusCapFor(t.context)) {
+      flashStatus(`${t.context || 'Uncategorized'} Focus is full (${focusCapFor(t.context)}) — finish or drop one first`);
       return;
     }
     patchTask(id, { status: 'focus' });   // patchTask auto-sets timing=today for focus
@@ -2475,8 +2480,8 @@
         const v = addInput.value.trim();
         if (!v) return;
         const c = (state.filter.context === 'Work' || state.filter.context === 'Personal') ? state.filter.context : 'Personal';
-        if (focusCountFor(c) >= FOCUS_CAP) {
-          flashStatus(`${c} Focus is full (${FOCUS_CAP}) — finish or drop one first`);
+        if (focusCountFor(c) >= focusCapFor(c)) {
+          flashStatus(`${c} Focus is full (${focusCapFor(c)}) — finish or drop one first`);
           return;
         }
         addInput.value = '';
@@ -3660,8 +3665,8 @@
     if (grouping.extract(task) === colId) return;
     if (state.groupBy === "status" && colId === "focus") {
       const ctx = task.context;
-      if (focusCountFor(ctx) >= FOCUS_CAP) {
-        setStatus(`${ctx || "Uncategorized"} Focus cap (${FOCUS_CAP}) reached — drop one before adding`);
+      if (focusCountFor(ctx) >= focusCapFor(ctx)) {
+        setStatus(`${ctx || "Uncategorized"} Focus cap (${focusCapFor(ctx)}) reached — drop one before adding`);
         setTimeout(() => setStatus(""), 3000);
         return;
       }
