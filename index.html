@@ -1134,6 +1134,34 @@
     text-transform: none; letter-spacing: 0; margin-left: 6px;
   }
 
+  #personal-stats-page {
+    flex: 1; min-height: 0; overflow-y: auto;
+    padding: 24px 32px;
+  }
+  .bi-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  .bi-grid-3 {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+  }
+  @media (max-width: 720px) { .bi-grid, .bi-grid-3 { grid-template-columns: 1fr; } }
+  .bi-chart-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 600; margin-bottom: 6px;
+  }
+  .bi-toggle {
+    display: flex; gap: 2px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 3px;
+  }
+  .bi-toggle-btn {
+    font-size: 12px; font-weight: 500; padding: 4px 12px;
+    border-radius: calc(var(--radius) - 2px); border: none;
+    background: transparent; color: var(--muted); cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .bi-toggle-btn:hover { background: var(--hover); color: var(--fg); }
+  .bi-toggle-btn.active { background: var(--accent); color: #fff; }
+
   table.weeks-table {
     width: 100%; border-collapse: collapse; font-size: 13px;
   }
@@ -1167,6 +1195,7 @@
     <div class="sidebar-section">
       <div class="sidebar-section-title">Personal Intelligence</div>
       <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Stats</button>
+      <button class="sidebar-item" data-target="personal-stats"><span class="icon">🏃</span> Personal Stats</button>
     </div>
   </nav>
   <div class="app-main">
@@ -1221,6 +1250,7 @@
     <main id="board" hidden></main>
     <section id="focus-view" hidden></section>
     <section id="stats-page" hidden></section>
+    <section id="personal-stats-page" hidden></section>
   </div>
 
   <div id="auth" class="auth-overlay">
@@ -1510,6 +1540,7 @@
     const isBoard = state.view === 'board';
     const isFocus = state.view === 'focus';
     const isStats = state.view === 'stats';
+    const isPersonalStats = state.view === 'personal-stats';
     const isKanbanPage = isBoard || isFocus;
 
     document.getElementById('toolbar').hidden = !isBoard;
@@ -1519,9 +1550,10 @@
     document.getElementById('board').hidden = !isBoard;
     document.getElementById('focus-view').hidden = !isFocus;
     document.getElementById('stats-page').hidden = !isStats;
+    document.getElementById('personal-stats-page').hidden = !isPersonalStats;
 
     document.getElementById('page-title').textContent =
-      isToday ? 'Today' : isStats ? 'Task Management' : 'Kanban';
+      isToday ? 'Today' : isStats ? 'Task Management' : isPersonalStats ? 'Personal Stats' : 'Kanban';
     const focusBtn = document.getElementById('focus-btn');
     focusBtn.hidden = !isKanbanPage;
     focusBtn.classList.toggle('active', isFocus);
@@ -1529,7 +1561,8 @@
     document.querySelectorAll('#sidebar .sidebar-item').forEach(b => {
       const isActive = (b.dataset.target === 'today' && isToday)
                     || (b.dataset.target === 'kanban' && isKanbanPage)
-                    || (b.dataset.target === 'stats' && isStats);
+                    || (b.dataset.target === 'stats' && isStats)
+                    || (b.dataset.target === 'personal-stats' && isPersonalStats);
       b.classList.toggle('active', isActive);
     });
 
@@ -1544,6 +1577,8 @@
       render();
     } else if (isFocus) {
       renderFocus();
+    } else if (isPersonalStats) {
+      renderPersonalStatsPage();
     } else {
       renderStatsPage();
     }
@@ -3516,6 +3551,246 @@
     `;
   }
 
+  // === Personal Stats (Journal BI) ===
+  let _journalData = null;
+  let _journalFetch = null;
+  let _biPeriod = 'week';
+
+  function fetchJournal() {
+    if (_journalData) return Promise.resolve(_journalData);
+    if (!_journalFetch) {
+      _journalFetch = fetch('http://localhost:5173/api/journal')
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(j => {
+          _journalData = (j.entries || []).filter(e => e.week).sort((a, b) => a.week < b.week ? -1 : 1);
+          return _journalData;
+        })
+        .catch(() => { _journalFetch = null; return null; });
+    }
+    return _journalFetch;
+  }
+
+  async function renderPersonalStatsPage() {
+    const el = document.getElementById('personal-stats-page');
+    if (!_journalData) {
+      el.innerHTML = `<div class="stats-page-inner" style="padding-top:60px;text-align:center;color:var(--muted);font-size:14px">Loading…</div>`;
+    }
+
+    const entries = await fetchJournal();
+    if (state.view !== 'personal-stats') return;
+
+    if (!entries) {
+      el.innerHTML = `<div class="stats-page-inner"><p style="margin-top:40px;color:var(--muted)">Could not reach journal server. Run <code style="background:var(--panel);padding:2px 6px;border-radius:4px;font-size:12px">python3 server.py</code> in the kanban folder, then click Personal Stats again.</p></div>`;
+      return;
+    }
+
+    const avgOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
+    const sumOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? v.reduce((a,b) => a+b, 0) : null; };
+    const fmtInt = v => v == null ? '—' : Math.round(v).toString();
+    const fmt1   = v => v == null ? '—' : (+v).toFixed(1);
+    const getLabel = e => e._label || (() => { const d = new Date(e.week); return `${d.getMonth()+1}/${d.getDate()}`; })();
+
+    // Build aggregated data for selected period
+    function buildPeriodData() {
+      if (_biPeriod === 'week') return entries.slice(-16);
+
+      const map = {};
+      for (const e of entries) {
+        const d = new Date(e.week);
+        let k, label;
+        if (_biPeriod === 'month') {
+          const mo = d.getMonth();
+          k = `${d.getFullYear()}-${String(mo+1).padStart(2,'0')}`;
+          const name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo];
+          label = `${name} '${String(d.getFullYear()).slice(2)}`;
+        } else {
+          const q = Math.floor(d.getMonth()/3)+1;
+          k = `${d.getFullYear()}-Q${q}`;
+          label = `Q${q} '${String(d.getFullYear()).slice(2)}`;
+        }
+        if (!map[k]) map[k] = { _label: label, _rows: [] };
+        map[k]._rows.push(e);
+      }
+      const keys = Object.keys(map).sort();
+      const slice = _biPeriod === 'month' ? keys.slice(-12) : keys;
+      return slice.map(k => {
+        const rows = map[k]._rows;
+        return {
+          _label: map[k]._label,
+          slp_score: avgOf(rows, 'slp_score'), slp_hrs: avgOf(rows, 'slp_hrs'),
+          slp_hrv:   avgOf(rows, 'slp_hrv'),   rhr:      avgOf(rows, 'rhr'),
+          training_hrs:   sumOf(rows, 'training_hrs'),
+          intensity_mins: sumOf(rows, 'intensity_mins'),
+          run_miles:  sumOf(rows, 'run_miles'), bike_miles: sumOf(rows, 'bike_miles'),
+          weekly_weight: avgOf(rows, 'weekly_weight'), body_fat: avgOf(rows, 'body_fat'),
+          stress:     avgOf(rows, 'stress'),    meditation: sumOf(rows, 'meditation'),
+          articles:   sumOf(rows, 'articles'),  podcasts:   sumOf(rows, 'podcasts'),
+        };
+      });
+    }
+
+    // Bar chart with relative scaling so variation is visible
+    function makeChart(data, key, color, valFmt, zeroBase = false) {
+      const allVals = data.map(e => e[key]).filter(v => v != null);
+      const maxVal = allVals.length ? Math.max(...allVals) : 1;
+      let minBase = 0;
+      if (!zeroBase && allVals.length > 1) {
+        const minVal = Math.min(...allVals);
+        minBase = Math.max(0, minVal - (maxVal - minVal) * 0.25);
+      }
+      const range = Math.max(0.001, maxVal - minBase);
+      return data.map((e, i) => {
+        const v = e[key];
+        const h = v != null ? Math.max(4, ((v - minBase) / range) * 100) : 0;
+        const label = getLabel(e);
+        const display = v != null ? valFmt(v) : '';
+        const opacityStyle = i === data.length - 1 ? ';opacity:1' : '';
+        return `
+          <div class="bar-col" title="${label}: ${display}">
+            <div class="bar-value">${display}</div>
+            <div class="bar-wrap"><div class="bar" style="height:${h}%;background:${color}${opacityStyle}"></div></div>
+            <div class="x-label">${label}</div>
+          </div>`;
+      }).join('');
+    }
+
+    const periodData = buildPeriodData();
+    const periodLbl  = _biPeriod === 'week' ? 'last 16 weeks' : _biPeriod === 'month' ? 'last 12 months' : 'all quarters';
+    const isAgg      = _biPeriod !== 'week';
+
+    // Summary cards always use latest raw week
+    const latestWith = key => [...entries].reverse().find(e => e[key] != null);
+    const latestSleep  = latestWith('slp_score');
+    const latestFit    = latestWith('training_hrs');
+    const latestStress = latestWith('stress');
+    const latestBody   = latestWith('weekly_weight');
+    const latestLearn  = latestWith('articles');
+    const avgSlp8 = avgOf(entries.slice(-8), 'slp_score');
+    const wkLbl = e => { const d = new Date(e.week); return `${d.getMonth()+1}/${d.getDate()}`; };
+
+    const card = (label, value, sub, color) => `
+      <div class="summary-card">
+        <div class="label">${label}</div>
+        <div class="value"${color ? ` style="color:${color}"` : ''}>${value}</div>
+        <div class="sub">${sub}</div>
+      </div>`;
+
+    const slSub = `<span class="section-sub">${periodLbl}</span>`;
+    const toggleHtml = ['week','month','quarter'].map(p =>
+      `<button class="bi-toggle-btn${_biPeriod===p?' active':''}" data-biperiod="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</button>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="stats-page-inner">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px">
+          <h2 style="margin:0">Personal Stats</h2>
+          <div class="bi-toggle">${toggleHtml}</div>
+        </div>
+        <p class="subtitle">Health &amp; lifestyle metrics from your logging journal.</p>
+
+        <div class="summary-cards">
+          ${card('Sleep Score', latestSleep ? fmtInt(latestSleep.slp_score) : '—', avgSlp8 ? `avg ${fmtInt(avgSlp8)} last 8 wks` : 'no data', '#6366f1')}
+          ${card('HRV', latestSleep ? fmtInt(latestSleep.slp_hrv) + ' ms' : '—', latestSleep?.rhr ? `resting HR ${latestSleep.rhr} bpm` : 'last logged', '#6366f1')}
+          ${card('Training Hrs', latestFit ? fmt1(latestFit.training_hrs) : '—', latestFit ? `wk of ${wkLbl(latestFit)}` : 'no data', '#10b981')}
+          ${card('Stress', latestStress ? fmtInt(latestStress.stress) : '—', '/100 · lower is better', '#f59e0b')}
+          ${card('Weight', latestBody ? fmt1(latestBody.weekly_weight) + ' lbs' : '—', latestBody?.body_fat ? `${fmt1(latestBody.body_fat)}% body fat` : 'last logged', '#8b5cf6')}
+          ${card('Articles', latestLearn ? fmtInt(latestLearn.articles) : '—', latestLearn?.podcasts != null ? `${latestLearn.podcasts} podcasts · ${wkLbl(latestLearn)}` : 'last logged', '')}
+        </div>
+
+        <div class="stats-section">
+          <h3>Sleep ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">Sleep Score</div>
+              <div class="points-chart">${makeChart(periodData, 'slp_score', '#6366f1', v => Math.round(v), false)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">Sleep Hours</div>
+              <div class="points-chart">${makeChart(periodData, 'slp_hrs', '#818cf8', v => (+v).toFixed(1), false)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Recovery ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">HRV (ms)</div>
+              <div class="points-chart">${makeChart(periodData, 'slp_hrv', '#6366f1', v => Math.round(v), false)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">Resting HR (bpm)</div>
+              <div class="points-chart">${makeChart(periodData, 'rhr', '#f43f5e', v => Math.round(v), false)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Fitness ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Training Hours</div>
+              <div class="points-chart">${makeChart(periodData, 'training_hrs', '#10b981', v => (+v).toFixed(1), true)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Intensity Minutes</div>
+              <div class="points-chart">${makeChart(periodData, 'intensity_mins', '#34d399', v => Math.round(v), true)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Body ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">Weight (lbs)</div>
+              <div class="points-chart">${makeChart(periodData, 'weekly_weight', '#8b5cf6', v => (+v).toFixed(1), false)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">Body Fat %</div>
+              <div class="points-chart">${makeChart(periodData, 'body_fat', '#a78bfa', v => (+v).toFixed(1), false)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Mind ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">Stress Level <span class="section-sub">lower = better</span></div>
+              <div class="points-chart">${makeChart(periodData, 'stress', '#f59e0b', v => Math.round(v), false)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Meditation Sessions</div>
+              <div class="points-chart">${makeChart(periodData, 'meditation', '#a78bfa', v => Math.round(v), true)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <h3>Learning ${slSub}</h3>
+          <div class="bi-grid">
+            <div>
+              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Articles</div>
+              <div class="points-chart">${makeChart(periodData, 'articles', '#0ea5e9', v => Math.round(v), true)}</div>
+            </div>
+            <div>
+              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Podcasts &amp; Videos</div>
+              <div class="points-chart">${makeChart(periodData, 'podcasts', '#38bdf8', v => Math.round(v), true)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    el.querySelectorAll('[data-biperiod]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _biPeriod = btn.dataset.biperiod;
+        renderPersonalStatsPage();
+      });
+    });
+  }
+
   // === Mutations ===
   // === Undo / Redo (session-only, in-memory) ===
   const undoMgr = { undo: [], redo: [], suspended: false, MAX: 60 };
@@ -3816,6 +4091,7 @@
     if (target === 'today') state.view = 'today';
     else if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
     else if (target === 'stats') state.view = 'stats';
+    else if (target === 'personal-stats') state.view = 'personal-stats';
     if (target) applyView();
   });
 

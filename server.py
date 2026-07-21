@@ -40,6 +40,7 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
 if not NOTION_TOKEN or not NOTION_DB_ID:
     sys.exit("Missing NOTION_TOKEN or NOTION_DB_ID in .env")
+JOURNAL_DB_ID = os.environ.get("NOTION_JOURNAL_DB_ID", "")
 
 
 def notion(path, method="GET", body=None):
@@ -84,6 +85,44 @@ def page_to_task(page):
         "staleness": staleness,
         "createdAt": page.get("created_time"),
         "updatedAt": page.get("last_edited_time"),
+    }
+
+
+def page_to_journal_entry(page):
+    props = page.get("properties", {})
+
+    def num(k):
+        return (props.get(k) or {}).get("number")
+
+    def formula_num(k):
+        f = (props.get(k) or {}).get("formula") or {}
+        return f.get("number") if f.get("type") == "number" else None
+
+    def date_str(k):
+        d = (props.get(k) or {}).get("date") or {}
+        return d.get("start")
+
+    return {
+        "week": date_str("Week of Journal"),
+        "slp_hrs": num("Slp Hrs"),
+        "slp_score": num("Slp Score"),
+        "slp_hrv": num("Slp HRV"),
+        "rhr": num("RHR"),
+        "run_miles": num("Run Miles"),
+        "bike_miles": num("Bike Miles"),
+        "swim_yards": num("Swim Yards"),
+        "strength_mins": num("Strength Minutes"),
+        "intensity_mins": num("Intensity Minutes"),
+        "step_count": num("Step Count"),
+        "body_fat": num("Body Fat %"),
+        "weekly_weight": num("Weekly Weight"),
+        "stress": num("Stress Level"),
+        "meditation": num("Meditation Sessions"),
+        "articles": num("Articles"),
+        "podcasts": num("Podcasts & Videos"),
+        "phone_pickups": num("Total Ph Pick Ups"),
+        "avg_daily_pickups": formula_num("Avg Daily Pick Ups"),
+        "training_hrs": num("Logged Training Hrs"),
     }
 
 
@@ -155,6 +194,36 @@ class Handler(BaseHTTPRequestHandler):
                 if not cursor:
                     break
             self._send(200, {"tasks": tasks})
+            return
+        if self.path == "/api/journal":
+            if not JOURNAL_DB_ID:
+                self._send(503, {"error": "NOTION_JOURNAL_DB_ID not configured"})
+                return
+            entries = []
+            cursor = None
+            while True:
+                body = {
+                    "page_size": 100,
+                    "sorts": [{"property": "Week of Journal", "direction": "ascending"}],
+                }
+                if cursor:
+                    body["start_cursor"] = cursor
+                status, data = notion(
+                    f"/databases/{JOURNAL_DB_ID}/query",
+                    method="POST",
+                    body=body,
+                )
+                if status >= 400:
+                    self._send(status, data)
+                    return
+                entries.extend(page_to_journal_entry(p) for p in data.get("results", []))
+                if not data.get("has_more"):
+                    break
+                cursor = data.get("next_cursor")
+                if not cursor:
+                    break
+            entries = [e for e in entries if e.get("week")]
+            self._send(200, {"entries": entries})
             return
         self._send(404, {"error": "not found"})
 
