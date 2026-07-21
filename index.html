@@ -1730,10 +1730,10 @@
     const row = { title, status, context, source, user_id: currentUser.id };
     if (timing) row.timing = timing;
     if (parentId) row.parent_id = parentId;
-    // Default new tasks to Medium so nothing starts untagged. Pass effort:null to
+    // Default new tasks to Small so quick captures start conservatively sized. Pass effort:null to
     // opt out (project containers — their effort rolls up from subtasks). A standalone
     // task that later becomes a project has its own effort cleared in addSubtask().
-    const eff = (effort === undefined || effort === '') ? 'M' : effort;
+    const eff = (effort === undefined || effort === '') ? 'S' : effort;
     if (eff) row.effort = eff;
     const { data, error } = await supabase
       .from('tasks')
@@ -2067,7 +2067,7 @@
   let availCollapsed = loadAvailCollapsed();
 
   // Inline add-form draft (persists across the Today re-renders).
-  const todayAdd = { open: false, context: '', due: '', effort: '', project: '' };
+  const todayAdd = { open: false, context: '', due: '', effort: 'S', project: '' };
   let todayDragId = null;
 
   function renderToday() {
