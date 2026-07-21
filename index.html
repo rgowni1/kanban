@@ -666,24 +666,43 @@
   .today-head { display: flex; align-items: baseline; gap: 12px; margin: 8px 0 18px; }
   .today-title { font-size: 22px; font-weight: 700; margin: 0; }
   .today-date { color: var(--muted); font-size: 14px; }
-  .today-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-  @media (max-width: 720px) { .today-grid { grid-template-columns: 1fr; } }
-  .today-pane { display: flex; flex-direction: column; gap: 8px; }
+  .today-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; min-width: 0; }
+  @media (max-width: 1000px) { .today-grid { grid-template-columns: 1fr; gap: 28px; } }
+  .today-pane {
+    display: flex; flex-direction: column; gap: 8px;
+    border: 1px solid transparent; border-radius: 12px;
+    padding: 10px; margin: -10px;
+    min-width: 0;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .today-pane.drag-over {
+    background: var(--accent-soft); border-color: var(--accent);
+  }
   .today-pane-head {
     display: flex; justify-content: space-between; align-items: center;
     font-size: 13px; font-weight: 600; color: var(--muted);
     padding: 2px 4px; text-transform: uppercase; letter-spacing: 0.04em;
   }
+  .today-pane-head-right { display: flex; align-items: center; gap: 8px; }
   .today-pane-count { font-weight: 500; }
+  .today-drop-hint {
+    color: var(--accent); font-size: 10px; font-weight: 600;
+    text-transform: none; letter-spacing: 0; opacity: 0;
+    transition: opacity .12s ease;
+  }
+  #today-view.is-dragging .today-drop-hint { opacity: 1; }
   .today-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .today-card {
     display: flex; align-items: center; gap: 8px;
-    padding: 10px 12px; border-radius: 10px; cursor: pointer;
+    padding: 10px 12px; border-radius: 10px; cursor: default;
     background: var(--panel); border: 1px solid var(--border);
     transition: border-color 0.12s, transform 0.06s, background 0.12s;
   }
   .today-card:hover { border-color: var(--accent); }
   .today-card:active { transform: scale(0.995); }
+  .today-card[draggable="true"] { cursor: grab; }
+  .today-card[draggable="true"]:active { cursor: grabbing; }
+  .today-card.dragging { opacity: .42; transform: scale(.99); }
   .today-card.focus { background: var(--panel-2); }
   .today-card-title { flex: 1; font-size: 14px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
   .today-bc { color: var(--muted); font-weight: 500; }
@@ -731,6 +750,13 @@
   }
   .today-card:hover .today-edit { opacity: 1; }
   .today-edit:hover { color: var(--accent); background: var(--panel-2); }
+  .today-move {
+    flex: 0 0 auto; border: 1px solid var(--border); background: var(--panel);
+    color: var(--muted); font-size: 12px; line-height: 1; padding: 4px 7px;
+    border-radius: 6px; cursor: pointer; opacity: 0;
+  }
+  .today-card:hover .today-move, .today-card:focus-within .today-move { opacity: 1; }
+  .today-move:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .today-del {
     flex: 0 0 auto; border: none; background: transparent; color: var(--muted);
     font-size: 18px; line-height: 1; padding: 0 6px; border-radius: 6px; cursor: pointer; opacity: 0;
@@ -2042,6 +2068,7 @@
 
   // Inline add-form draft (persists across the Today re-renders).
   const todayAdd = { open: false, context: '', due: '', effort: '', project: '' };
+  let todayDragId = null;
 
   function renderToday() {
     const root = document.getElementById('today-view');
@@ -2061,15 +2088,8 @@
       return (POOL_STATUS_ORDER[a.status] ?? 3) - (POOL_STATUS_ORDER[b.status] ?? 3);
     };
     const focusedProjectIds = new Set(focus.filter(isProject).map(t => t.id));
-    // A project focused as a WHOLE (no individual subtask focused) shows ALL its open
-    // subtasks nested in Focus (focusNested falls back to `open`), so keep those out of
-    // the pool. But if you focused a SPECIFIC subtask, only that one shows nested — its
-    // unfocused siblings must stay in Available so you can still pull them in.
-    const wholeFocusedProjectIds = new Set(
-      [...focusedProjectIds].filter(pid => !childrenOf(pid).some(c => c.status === 'focus')));
     const poolTasks = state.tasks.filter(t =>
-      !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t)
-      && !(t.parentId && wholeFocusedProjectIds.has(t.parentId)));
+      !t.archived && inContext(t) && t.status !== 'focus' && t.status !== 'done' && !isProject(t));
     // Standalone tasks render flat; subtasks group under their project.
     const standalone = poolTasks.filter(t => !t.parentId).sort(byDueThenStatus);
     const byParent = new Map();
@@ -2099,18 +2119,20 @@
     const focusCard = (t) => {
       const par = parentTitleOf(t);
       return `
-      <li class="today-card focus" data-demote="${escapeHtml(t.id)}" title="Click to move back to In Progress">
+      <li class="today-card focus" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag to Available">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        <button class="today-move" draggable="false" data-move-available="${escapeHtml(t.id)}" title="Move to Available" aria-label="Move to Available">→</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
     };
     const poolCard = (t) => `
-      <li class="today-card${t.parentId ? ' subtask' : ''}" data-promote="${escapeHtml(t.id)}" title="Click to move into Focus">
+      <li class="today-card${t.parentId ? ' subtask' : ''}" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-focus="${escapeHtml(t.id)}" title="Click or drag to Focus">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${dueChip(t)}
+        <button class="today-move" draggable="false" data-move-focus="${escapeHtml(t.id)}" title="Move to Focus" aria-label="Move to Focus">←</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
@@ -2130,29 +2152,30 @@
       const { done, total } = projectProgress(t.id);
       const pts = projectEffortPoints(t.id);
       return `
-      <li class="today-card focus today-proj-focus" data-demote="${escapeHtml(t.id)}" title="Click to move project back to In Progress">
+      <li class="today-card focus today-proj-focus" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag project to Available">
         <span class="ctx-ico">📁</span><span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${pts ? `<span class="today-due">${pts} pts</span>` : ''}
         <span class="today-due">${done}/${total}</span>
+        <button class="today-move" draggable="false" data-move-available="${escapeHtml(t.id)}" title="Move project to Available" aria-label="Move project to Available">→</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open project">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete project + subtasks">×</button>
       </li>`;
     };
     const focusChildCard = (t) => `
-      <li class="today-card subtask focus-child" data-open="${escapeHtml(t.id)}" title="Click to open; ○ to mark done">
+      <li class="today-card subtask focus-child" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag to Available">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        <button class="today-move" draggable="false" data-move-available="${escapeHtml(t.id)}" title="Move to Available" aria-label="Move to Available">→</button>
+        <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
       </li>`;
     // Don't list a focused subtask at the top level if its project is also focused —
     // it already shows nested under that project below.
     const focusTop = focus.filter(t => !(t.parentId && focusedProjectIds.has(t.parentId)));
-    // Nested under a focused project: the focused children if any are focused,
-    // otherwise the whole open checklist (i.e. when you focus the project itself).
+    // Only genuinely focused children appear under a focused project. Unfocused
+    // siblings stay in Available so every visible card can move independently.
     const focusNested = (pid) => {
-      const open = childrenOf(pid).filter(c => c.status !== 'done');
-      const focused = open.filter(c => c.status === 'focus');
-      return (focused.length ? focused : open).sort(byDueThenStatus);
+      return childrenOf(pid).filter(c => c.status === 'focus').sort(byDueThenStatus);
     };
     const focusBody = focusTop.length
       ? focusTop.map(t => isProject(t)
@@ -2176,11 +2199,11 @@
           <span class="today-date">${escapeHtml(dateStr)}</span>
         </div>
         <div class="today-grid">
-          <section class="today-pane">
-            <div class="today-pane-head"><span>🎯 Focus</span><span class="today-pane-count">${focus.length}</span></div>
+          <section class="today-pane" data-today-drop="focus">
+            <div class="today-pane-head"><span>Focus</span><span class="today-pane-head-right"><span class="today-drop-hint">Drop to focus</span><span class="today-pane-count">${focus.length}</span></span></div>
             <ul class="today-list">${focusBody}</ul>
           </section>
-          <section class="today-pane">
+          <section class="today-pane" data-today-drop="available">
             <div class="today-add">
               <input id="today-add-input" type="text" placeholder="+ Add a task…" autocomplete="off" />
               <div class="today-add-row" id="today-add-row" hidden>
@@ -2207,7 +2230,7 @@
                 <button id="add-confirm" class="today-add-btn">Add</button>
               </div>
             </div>
-            <div class="today-pane-head"><span>Available</span><span class="today-pane-count">${poolCount}</span></div>
+            <div class="today-pane-head"><span>Available</span><span class="today-pane-head-right"><span class="today-drop-hint">Drop to defer</span><span class="today-pane-count">${poolCount}</span></span></div>
             <ul class="today-list">${poolBody}</ul>
           </section>
         </div>
@@ -2298,10 +2321,59 @@
       if (toggle) { patchTask(toggle.dataset.toggle, { status: 'done' }); return; }
       const edit = e.target.closest('[data-open]');
       if (edit) { openDrawer(edit.dataset.open); return; }
-      const promote = e.target.closest('[data-promote]');
-      if (promote) { promoteToFocus(promote.dataset.promote); return; }
-      const demote = e.target.closest('[data-demote]');
-      if (demote) { patchTask(demote.dataset.demote, { status: 'in-progress' }); return; }
+      const promote = e.target.closest('[data-move-focus]');
+      if (promote) { promoteToFocus(promote.dataset.moveFocus); return; }
+      const demote = e.target.closest('[data-move-available]');
+      if (demote) { patchTask(demote.dataset.moveAvailable, { status: 'in-progress' }); return; }
+    });
+
+    const clearTodayDrag = () => {
+      todayDragId = null;
+      root.classList.remove('is-dragging');
+      root.querySelectorAll('.today-card.dragging, .today-pane.drag-over').forEach(el => {
+        el.classList.remove('dragging', 'drag-over');
+      });
+    };
+    root.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.today-card[data-task-id]');
+      if (!card || e.target.closest('button, [data-toggle]')) {
+        e.preventDefault();
+        return;
+      }
+      todayDragId = card.dataset.taskId;
+      e.dataTransfer.setData('text/plain', todayDragId);
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('dragging');
+      root.classList.add('is-dragging');
+    });
+    root.addEventListener('dragend', clearTodayDrag);
+    root.addEventListener('dragover', (e) => {
+      const pane = e.target.closest('[data-today-drop]');
+      if (!pane || !todayDragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      root.querySelectorAll('.today-pane.drag-over').forEach(el => {
+        if (el !== pane) el.classList.remove('drag-over');
+      });
+      pane.classList.add('drag-over');
+    });
+    root.addEventListener('dragleave', (e) => {
+      const pane = e.target.closest('[data-today-drop]');
+      if (pane && !pane.contains(e.relatedTarget)) pane.classList.remove('drag-over');
+    });
+    root.addEventListener('drop', (e) => {
+      const pane = e.target.closest('[data-today-drop]');
+      if (!pane) return;
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain') || todayDragId;
+      const task = state.tasks.find(t => t.id === id);
+      const destination = pane.dataset.todayDrop;
+      clearTodayDrag();
+      if (!task) return;
+      if (destination === 'focus' && task.status !== 'focus') promoteToFocus(id);
+      else if (destination === 'available' && task.status === 'focus') {
+        patchTask(id, { status: 'in-progress' });
+      }
     });
     // Reveal the inline field row when you start adding; default context from the view.
     root.addEventListener('focusin', (e) => {
