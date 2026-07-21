@@ -35,8 +35,8 @@
     --brand-navy-soft: #2a4f62;
     --brand-olive: #a5b586;
     --danger: #b91c1c;
-    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
-    --radius: 10px;
+    --shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --radius: 8px;
     --serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
     --sans: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   }
@@ -88,8 +88,8 @@
     margin-bottom: 4px;
   }
   .sidebar-brand .brand-dot {
-    width: 18px; height: 18px; border-radius: 6px;
-    background: linear-gradient(135deg, var(--brand-navy), var(--brand-olive));
+    width: 16px; height: 16px; border-radius: 4px;
+    background: var(--accent);
   }
   .sidebar-section { display: flex; flex-direction: column; gap: 2px; }
   .sidebar-section-title {
@@ -126,8 +126,8 @@
     color: var(--brand-olive);
   }
   header h1 {
-    margin: 0; font-family: var(--serif);
-    font-size: 24px; font-weight: 600; letter-spacing: -0.005em;
+    margin: 0; font-family: var(--sans);
+    font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
     color: #fff;
   }
   header .actions { display: flex; gap: 8px; align-items: center; }
@@ -141,7 +141,7 @@
 
   /* Focus callout button */
   .focus-btn {
-    background: linear-gradient(135deg, #ec4899, #f43f5e);
+    background: var(--accent);
     color: #fff;
     border: none;
     padding: 7px 18px;
@@ -149,14 +149,14 @@
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(236,72,153,0.25), 0 2px 8px rgba(236,72,153,0.18);
+    box-shadow: none;
     transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
     display: inline-flex; align-items: center; gap: 6px;
   }
   .focus-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
   .focus-btn:active { transform: translateY(0); }
   .focus-btn.active {
-    background: linear-gradient(135deg, #be185d, #9f1239);
+    background: #46563c;
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
   }
   .focus-btn .focus-count {
@@ -248,8 +248,8 @@
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: 7px;
+    padding: 11px 12px;
     box-shadow: var(--shadow);
     cursor: grab;
     position: relative;
@@ -262,6 +262,7 @@
   }
   .card .title {
     outline: none; min-height: 1.4em; word-break: break-word;
+    font-weight: 500; line-height: 1.4; padding-right: 16px;
   }
   .card .title[contenteditable="true"]:focus {
     background: var(--accent-soft); border-radius: 4px;
@@ -270,6 +271,16 @@
     margin-top: 6px; font-size: 11px; color: var(--muted);
     display: flex; justify-content: space-between; align-items: center;
   }
+  .card-note {
+    margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.45;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .card-context-action {
+    margin-top: 8px; padding: 0; border: 0; background: transparent;
+    color: var(--muted); font-size: 11px; line-height: 1.4;
+  }
+  .card-context-action:hover { background: transparent; color: var(--accent); }
   .card .meta .meta-created { font-weight: 600; color: var(--text); }
   .col[data-status="done"] .card .title { text-decoration: line-through; color: var(--muted); }
   .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
@@ -565,6 +576,15 @@
     text-transform: uppercase; letter-spacing: 0.04em;
   }
   .drawer .section-label .progress { text-transform: none; letter-spacing: 0; }
+  .notes-section-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px; margin: 22px 0 8px;
+  }
+  .notes-section-head .section-label { margin: 0 0 2px; }
+  .notes-help { margin: 0; color: var(--muted); font-size: 12px; }
+  .notes-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .notes-save-state { font-size: 11px; color: var(--muted); min-width: 42px; text-align: right; }
+  .notes-mode-btn { font-size: 11px; padding: 4px 9px; background: var(--panel-2); }
 
   /* Subtasks */
   .subtasks-list { display: flex; flex-direction: column; gap: 4px; }
@@ -781,6 +801,10 @@
   }
   .desc-rendered:hover { background: var(--bg); }
   .desc-rendered.empty { color: var(--muted); font-style: italic; }
+  #drawer-description {
+    min-height: 180px; resize: vertical; overflow: auto;
+    padding: 12px 13px; line-height: 1.6; background: var(--panel);
+  }
   .desc-rendered h1, .desc-rendered h2, .desc-rendered h3 {
     margin: 0.7em 0 0.3em; font-weight: 600; line-height: 1.3;
   }
@@ -854,7 +878,7 @@
     margin-bottom: 14px; padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
   }
-  .focus-col-title { font-family: var(--serif); font-size: 19px; font-weight: 600; color: var(--text); letter-spacing: -0.005em; }
+  .focus-col-title { font-family: var(--sans); font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -0.015em; }
   .focus-col-count { font-size: 12px; color: var(--muted); }
   .focus-list {
     list-style: none; margin: 0; padding: 0;
@@ -901,9 +925,8 @@
   }
   .focus-card.drop-before::before { top: -4px; }
   .focus-card.drop-after::after { bottom: -4px; }
-  .focus-col-todo .focus-col-title::before { content: "🎯 "; }
   .focus-col-done {
-    background: linear-gradient(180deg, #ecfdf5 0%, var(--panel) 60%);
+    background: var(--panel);
     border-color: #a7f3d0;
   }
   .focus-col-done .focus-col-title { color: #065f46; }
@@ -942,6 +965,31 @@
     text-align: center; color: var(--muted); font-size: 13px;
     padding: 30px 12px;
   }
+  .focus-offramp {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+  .focus-offramp-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .focus-offramp-targets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .focus-offramp-target {
+    min-height: 54px; border: 1px dashed var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--muted); padding: 8px 10px;
+    display: flex; flex-direction: column; justify-content: center; gap: 1px;
+    transition: border-color .12s ease, background .12s ease, color .12s ease;
+  }
+  .focus-offramp-target strong { color: var(--text); font-size: 12px; font-weight: 600; }
+  .focus-offramp-target span { font-size: 10px; }
+  .focus-offramp-target.drag-over {
+    border-color: var(--accent); background: var(--accent-soft); color: var(--accent);
+  }
+  .focus-card-row { display: flex; align-items: flex-start; gap: 10px; }
+  .focus-card-row .focus-card-title { flex: 1; }
+  .focus-card-actions { display: flex; gap: 3px; opacity: 0; transition: opacity .12s ease; }
+  .focus-card:hover .focus-card-actions, .focus-card:focus-within .focus-card-actions { opacity: 1; }
+  .focus-card-action {
+    border: 0; background: transparent; color: var(--muted); padding: 2px 5px;
+    font-size: 12px; line-height: 1.2;
+  }
+  .focus-card-action:hover { background: var(--panel-2); color: var(--text); }
 
   /* View toggle (header) */
   .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
@@ -1083,7 +1131,6 @@
     <div class="sidebar-section">
       <div class="sidebar-section-title">Task Management</div>
       <button class="sidebar-item" data-target="today"><span class="icon">☀️</span> Today</button>
-      <button class="sidebar-item" data-target="kanban"><span class="icon">📋</span> Kanban</button>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Projects</div>
@@ -1230,10 +1277,19 @@
           <div class="subtasks-list" id="subtasks-list"></div>
           <button class="subtask-add" id="subtask-add">+ Add subtask</button>
         </div>
-        <div class="section-label"><span>Description</span></div>
+        <div class="notes-section-head">
+          <div>
+            <div class="section-label"><span>Context &amp; notes</span></div>
+            <p class="notes-help">Add background, links, decisions, or what “done” looks like.</p>
+          </div>
+          <div class="notes-actions">
+            <span class="notes-save-state" id="notes-save-state"></span>
+            <button class="notes-mode-btn" id="notes-mode" type="button">Preview</button>
+          </div>
+        </div>
         <div class="desc-container">
           <div class="desc-rendered" id="drawer-description-view" tabindex="0"></div>
-          <textarea id="drawer-description" placeholder="Markdown: **bold**, _italic_, [link](url), - list, ## heading" hidden></textarea>
+          <textarea id="drawer-description" placeholder="What should you know before starting? Add links, decisions, constraints, and what done looks like."></textarea>
         </div>
         <div class="drawer-timestamps" id="drawer-timestamps"></div>
       </div>
@@ -2313,7 +2369,13 @@
       }
       return `
         <li class="focus-card" draggable="true" data-id="${escapeHtml(task.id)}">
-          <div class="focus-card-title">${escapeHtml(task.title)}</div>
+          <div class="focus-card-row">
+            <div class="focus-card-title">${escapeHtml(task.title)}</div>
+            <div class="focus-card-actions" aria-label="Task actions">
+              <button class="focus-card-action" data-focus-action="in-progress" title="Return to In Progress" aria-label="Return to In Progress">↙</button>
+              <button class="focus-card-action" data-focus-action="done" title="Mark done" aria-label="Mark done">✓</button>
+            </div>
+          </div>
           ${badges.length ? `<div class="focus-card-badges">${badges.join('')}</div>` : ''}
         </li>
       `;
@@ -2360,6 +2422,17 @@
             </div>
             <input id="focus-add-input" class="focus-add-input" type="text" placeholder="+ Add a Focus task…" autocomplete="off" />
             <div class="focus-sections">${focusSectionsHtml}</div>
+            <div class="focus-offramp">
+              <div class="focus-offramp-label">Move out of Focus</div>
+              <div class="focus-offramp-targets">
+                <div class="focus-offramp-target" data-move-status="in-progress">
+                  <strong>In Progress</strong><span>Keep it active, but not committed today</span>
+                </div>
+                <div class="focus-offramp-target" data-move-status="not-started">
+                  <strong>Not started</strong><span>Return it to the queue</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="focus-col focus-col-done" data-status="done">
             <div class="focus-col-head">
@@ -2391,6 +2464,13 @@
       el.addEventListener('click', () => {
         if (el.classList.contains('dragging')) return;
         openDrawer(id);
+      });
+      el.querySelectorAll('[data-focus-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          patchTask(id, { status: btn.dataset.focusAction });
+        });
+        btn.addEventListener('mousedown', (e) => e.stopPropagation());
       });
     });
 
@@ -2470,6 +2550,26 @@
       const task = state.tasks.find(t => t.id === id);
       if (!task || task.status === 'done') return;
       patchTask(id, { status: 'done' });
+    });
+
+    root.querySelectorAll('.focus-offramp-target').forEach(target => {
+      target.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        target.classList.add('drag-over');
+      });
+      target.addEventListener('dragleave', (e) => {
+        if (!target.contains(e.relatedTarget)) target.classList.remove('drag-over');
+      });
+      target.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        target.classList.remove('drag-over');
+        const id = e.dataTransfer.getData('text/plain');
+        const task = state.tasks.find(t => t.id === id);
+        if (!task || task.status !== 'focus') return;
+        patchTask(id, { status: target.dataset.moveStatus });
+      });
     });
 
     // Quick-add a Focus task directly in this view (lands in "No estimate" — drag to size it).
@@ -2571,14 +2671,23 @@
     if (task.status === "done" && task.completedAt) {
       badges.push(`<span class="badge completed-chip" title="Completed ${escapeHtml(formatFullDate(task.completedAt))}">✓ Done ${escapeHtml(formatShortDate(task.completedAt))}</span>`);
     }
+    const noteSummary = descriptionSummary(task.description || '');
     el.innerHTML = `
       <button class="del" title="Delete">×</button>
       <div class="title" tabindex="0">${escapeHtml(task.title)}</div>
+      ${noteSummary
+        ? `<div class="card-note">${escapeHtml(noteSummary)}</div>`
+        : `<button class="card-context-action" data-add-context>+ Add context</button>`}
       ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
       <div class="meta"><span class="meta-created" title="Created ${escapeHtml(formatFullDate(task.createdAt))}">Created ${escapeHtml(formatShortDate(task.createdAt))}</span><span>${formatDate(task.updatedAt)}</span></div>
     `;
     el.addEventListener("click", (e) => {
       if (e.target.closest(".del")) return;
+      if (e.target.closest("[data-add-context]")) {
+        e.stopPropagation();
+        openDrawer(task.id, { editDescription: true });
+        return;
+      }
       const ep = e.target.closest("[data-set-effort]");
       if (ep) { e.stopPropagation(); patchTask(task.id, { effort: ep.dataset.setEffort }); return; }
       if (e.target.closest("[data-open-project]")) {
@@ -2606,6 +2715,7 @@
 
   // === Drawer ===
   let drawerTaskId = null;
+  let descSaveTimer = null;
 
   if (window.marked) window.marked.use({ gfm: true, breaks: true });
   function renderMarkdown(text) {
@@ -2632,6 +2742,14 @@
       view.classList.remove('empty');
       view.innerHTML = renderMarkdown(text);
     }
+  }
+
+  function descriptionSummary(text) {
+    return (text || '')
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      .replace(/[#>*_`~\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function autoResizeTextarea(el) {
@@ -2742,9 +2860,43 @@
       : "";
   }
 
-  function openDrawer(taskId) {
+  function setDescriptionMode(mode) {
+    const textarea = document.getElementById('drawer-description');
+    const view = document.getElementById('drawer-description-view');
+    const button = document.getElementById('notes-mode');
+    const previewing = mode === 'preview';
+    textarea.hidden = previewing;
+    view.hidden = !previewing;
+    button.textContent = previewing ? 'Edit' : 'Preview';
+    if (previewing) renderDescriptionView(textarea.value);
+  }
+
+  async function flushDescriptionSave() {
+    if (descSaveTimer) {
+      clearTimeout(descSaveTimer);
+      descSaveTimer = null;
+    }
+    if (!drawerTaskId) return;
+    const taskId = drawerTaskId;
+    const textarea = document.getElementById('drawer-description');
+    const saveState = document.getElementById('notes-save-state');
     const task = state.tasks.find(t => t.id === taskId);
     if (!task) return;
+    const next = textarea.value.trim() === '' ? null : textarea.value;
+    const current = task.description || null;
+    if (next === current) {
+      saveState.textContent = '';
+      return;
+    }
+    saveState.textContent = 'Saving…';
+    await patchTask(taskId, { description: next });
+    if (drawerTaskId === taskId) saveState.textContent = 'Saved';
+  }
+
+  function openDrawer(taskId, options = {}) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (drawerTaskId && drawerTaskId !== taskId) flushDescriptionSave();
     drawerTaskId = taskId;
     document.getElementById('drawer-title').value = task.title || '';
     document.getElementById('drawer-status').value = task.status || 'inbox';
@@ -2754,10 +2906,9 @@
     document.getElementById('drawer-source-link').value = task.sourceLink || '';
 
     const descTextarea = document.getElementById('drawer-description');
-    const descView = document.getElementById('drawer-description-view');
     descTextarea.value = task.description || '';
-    descTextarea.hidden = true;
-    descView.hidden = false;
+    document.getElementById('notes-save-state').textContent = '';
+    setDescriptionMode('write');
     renderDescriptionView(task.description || '');
 
     renderDrawerHierarchy();
@@ -2766,10 +2917,18 @@
 
     document.getElementById('drawer-backdrop').dataset.open = 'true';
     document.getElementById('drawer').setAttribute('aria-hidden', 'false');
-    setTimeout(() => document.getElementById('drawer-title').focus(), 50);
+    setTimeout(() => {
+      const target = options.editDescription ? descTextarea : document.getElementById('drawer-title');
+      target.focus();
+      if (options.editDescription) {
+        const len = descTextarea.value.length;
+        descTextarea.setSelectionRange(len, len);
+      }
+    }, 50);
   }
 
   function closeDrawer() {
+    flushDescriptionSave();
     drawerTaskId = null;
     document.getElementById('drawer-backdrop').dataset.open = 'false';
     document.getElementById('drawer').setAttribute('aria-hidden', 'true');
@@ -2798,31 +2957,34 @@
       });
     }
 
-    // Description: view ↔ textarea toggle
+    // Context & notes: write by default, with an optional rendered preview.
     const descTextarea = document.getElementById('drawer-description');
     const descView = document.getElementById('drawer-description-view');
     descView.addEventListener('click', (e) => {
       if (e.target.closest('a')) return;
       if (!drawerTaskId) return;
-      descView.hidden = true;
-      descTextarea.hidden = false;
+      setDescriptionMode('write');
       autoResizeTextarea(descTextarea);
       descTextarea.focus();
       const len = descTextarea.value.length;
       descTextarea.setSelectionRange(len, len);
     });
-    descTextarea.addEventListener('input', () => autoResizeTextarea(descTextarea));
-    descTextarea.addEventListener('blur', () => {
-      if (!drawerTaskId) return;
-      const task = state.tasks.find(t => t.id === drawerTaskId);
-      if (!task) return;
-      const raw = descTextarea.value;
-      const next = raw === '' ? null : raw;
-      const current = task.description || null;
-      if (next !== current) patchTask(drawerTaskId, { description: next });
-      descTextarea.hidden = true;
-      descView.hidden = false;
-      renderDescriptionView(next || '');
+    descTextarea.addEventListener('input', () => {
+      autoResizeTextarea(descTextarea);
+      document.getElementById('notes-save-state').textContent = 'Unsaved';
+      if (descSaveTimer) clearTimeout(descSaveTimer);
+      descSaveTimer = setTimeout(flushDescriptionSave, 700);
+    });
+    descTextarea.addEventListener('blur', flushDescriptionSave);
+    document.getElementById('notes-mode').addEventListener('click', async () => {
+      if (descTextarea.hidden) {
+        setDescriptionMode('write');
+        autoResizeTextarea(descTextarea);
+        descTextarea.focus();
+      } else {
+        await flushDescriptionSave();
+        setDescriptionMode('preview');
+      }
     });
 
     // Project (parent) picker
@@ -3577,7 +3739,7 @@
       return;
     }
 
-    // Top-level nav (Today / Kanban / Stats).
+    // Top-level nav (Today / Stats). Project links still open their scoped board.
     const target = btn.dataset.target;
     if (target === 'today') state.view = 'today';
     else if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
