@@ -744,6 +744,19 @@
   }
   .today-due.now { color: #b91c1c; background: #fee2e2; }
   [data-theme="dark"] .today-due.now { color: #fecaca; background: #7f1d1d; }
+  /* Effort tag on Today cards — same palette as the board's effort badges. */
+  .today-eff {
+    flex: 0 0 auto; font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+    border-radius: 999px; padding: 1px 7px; background: var(--panel-2); color: var(--muted);
+  }
+  .today-eff-S { background: #d1fae5; color: #065f46; }
+  .today-eff-M { background: #fef3c7; color: #92400e; }
+  .today-eff-L { background: #fee2e2; color: #991b1b; }
+  .today-eff-XL { background: #fce7f3; color: #9d174d; }
+  [data-theme="dark"] .today-eff-S { background: #064e3b; color: #6ee7b7; }
+  [data-theme="dark"] .today-eff-M { background: #78350f; color: #fde68a; }
+  [data-theme="dark"] .today-eff-L { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .today-eff-XL { background: #831843; color: #fbcfe8; }
   .today-edit {
     flex: 0 0 auto; border: none; background: transparent; color: var(--muted);
     font-size: 13px; padding: 2px 6px; border-radius: 6px; cursor: pointer; opacity: 0;
@@ -1331,10 +1344,12 @@
   });
 
   // Per-context Focus caps. Work runs higher (3-3-3: 1 deep + ~3 urgent + ~3 maintenance);
-  // Personal stays lean. focusCapFor() falls back to the default for any other context.
-  const FOCUS_CAPS = { Work: 7, Personal: 5 };
+  // Personal is uncapped (Infinity) — life doesn't queue politely.
+  // focusCapFor() falls back to the default for any other context.
+  const FOCUS_CAPS = { Work: 7, Personal: Infinity };
   const FOCUS_CAP_DEFAULT = 5;
   function focusCapFor(ctx) { return FOCUS_CAPS[ctx] ?? FOCUS_CAP_DEFAULT; }
+  function focusCapped(ctx) { return Number.isFinite(focusCapFor(ctx)); }
   // Count live focus tasks in a given context — task-level (each focused task,
   // including individual subtasks, counts 1). The cap is enforced per-context.
   function focusCountFor(ctx) {
@@ -1952,7 +1967,7 @@
           // Viewing a single context — tasks are already scoped to it.
           const capCtx = state.filter.context;
           overCap = tasks.length > focusCapFor(capCtx);
-          countLabel = `${tasks.length}/${focusCapFor(capCtx)}`;
+          countLabel = focusCapped(capCtx) ? `${tasks.length}/${focusCapFor(capCtx)}` : `${tasks.length}`;
         } else {
           // "All" view — cap is per-context, so flag if any one context is over.
           overCap = focusCountFor("Work") > focusCapFor("Work") || focusCountFor("Personal") > focusCapFor("Personal");
@@ -2110,6 +2125,11 @@
     const dueChip = (t) => t.timing
       ? `<span class="today-due${t.timing === 'this-week' ? ' now' : ''}">${escapeHtml(TIMING_LABEL[t.timing] || t.timing)}</span>`
       : '';
+    // Effort tag so sizing is visible without opening the drawer. Unsized tasks show "?".
+    const effChip = (t) => {
+      const e = ['S','M','L','XL'].includes(t.effort) ? t.effort : null;
+      return `<span class="today-eff${e ? ` today-eff-${e}` : ''}" title="${e ? `${e} · ${POINTS[e]} pt${POINTS[e] === 1 ? '' : 's'}` : 'No estimate'}">${e || '?'}</span>`;
+    };
 
     const parentTitleOf = (t) => {
       if (!t.parentId) return null;
@@ -2122,6 +2142,7 @@
       <li class="today-card focus" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag to Available">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${par ? `<span class="today-bc">${escapeHtml(par)} › </span>` : ''}${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        ${effChip(t)}
         <button class="today-move" draggable="false" data-move-available="${escapeHtml(t.id)}" title="Move to Available" aria-label="Move to Available">→</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
@@ -2131,6 +2152,7 @@
       <li class="today-card${t.parentId ? ' subtask' : ''}" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-focus="${escapeHtml(t.id)}" title="Click or drag to Focus">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        ${effChip(t)}
         ${dueChip(t)}
         <button class="today-move" draggable="false" data-move-focus="${escapeHtml(t.id)}" title="Move to Focus" aria-label="Move to Focus">←</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
@@ -2165,6 +2187,7 @@
       <li class="today-card subtask focus-child" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag to Available">
         <span class="today-check" data-toggle="${escapeHtml(t.id)}" title="Mark done"></span>
         ${dot(t)}<span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
+        ${effChip(t)}
         <button class="today-move" draggable="false" data-move-available="${escapeHtml(t.id)}" title="Move to Available" aria-label="Move to Available">→</button>
         <button class="today-edit" data-open="${escapeHtml(t.id)}" title="Open details">✎</button>
         <button class="today-del" data-del="${escapeHtml(t.id)}" title="Delete task">×</button>
