@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-PORT = 5173
+PORT = int(os.environ.get("PORT", "5173"))
 NOTION_VERSION = "2022-06-28"
 TITLE_PROP = "Task name`"
 STATUS_PROP = "Status - New"
@@ -96,11 +96,23 @@ def page_to_journal_entry(page):
 
     def formula_num(k):
         f = (props.get(k) or {}).get("formula") or {}
-        return f.get("number") if f.get("type") == "number" else None
+        if f.get("type") == "number":
+            return f.get("number")
+        if f.get("type") == "string":
+            match = re.search(r"-?[\d,]+(?:\.\d+)?", f.get("string") or "")
+            return float(match.group(0).replace(",", "")) if match else None
+        return None
+
+    def positive_formula_num(k):
+        value = formula_num(k)
+        return value if value is not None and value > 0 else None
 
     def date_str(k):
         d = (props.get(k) or {}).get("date") or {}
         return d.get("start")
+
+    def rich_text(k):
+        return "".join(t.get("plain_text", "") for t in (props.get(k) or {}).get("rich_text", [])) or None
 
     return {
         "week": date_str("Week of Journal"),
@@ -108,6 +120,8 @@ def page_to_journal_entry(page):
         "slp_score": num("Slp Score"),
         "slp_hrv": num("Slp HRV"),
         "rhr": num("RHR"),
+        "avg_sleep_time": rich_text("Avg Sleep Time"),
+        "avg_wake_time": rich_text("Avg Wake Time"),
         "run_miles": num("Run Miles"),
         "bike_miles": num("Bike Miles"),
         "swim_yards": num("Swim Yards"),
@@ -123,6 +137,10 @@ def page_to_journal_entry(page):
         "phone_pickups": num("Total Ph Pick Ups"),
         "avg_daily_pickups": formula_num("Avg Daily Pick Ups"),
         "training_hrs": num("Logged Training Hrs"),
+        "consumed_cals": positive_formula_num("Consumed Cals"),
+        "avg_protein": positive_formula_num("Avg Protein"),
+        "calorie_deficit": formula_num("Calorie Deficit"),
+        "garmin_tdee": num("Garmin TDEE"),
     }
 
 

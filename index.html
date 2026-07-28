@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Kanban</title>
+<title>Hail Mary</title>
 <script>
   // Resolve theme before first paint (no flash). 'system' follows the OS.
   (function () {
@@ -1136,31 +1136,151 @@
 
   #personal-stats-page {
     flex: 1; min-height: 0; overflow-y: auto;
-    padding: 24px 32px;
+    padding: 0;
+    background:
+      radial-gradient(circle at 92% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 28rem),
+      var(--bg);
   }
+  #personal-stats-page .stats-page-inner { max-width: 1180px; padding: 34px 36px 60px; }
+  .bi-hero {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+    margin-bottom: 24px;
+  }
+  .bi-kicker {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    color: var(--accent); font-size: 11px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .bi-kicker::before { content: ''; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+  .bi-hero h2 { font-size: clamp(28px, 4vw, 42px); line-height: 1.05; letter-spacing: -.025em; }
+  .bi-hero .subtitle { margin: 10px 0 0; max-width: 560px; font-size: 14px; line-height: 1.6; }
+  .bi-updated { margin-top: 7px; color: var(--muted); font-size: 11px; }
   .bi-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
   }
-  .bi-grid-3 {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+  .bi-summary-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px; margin-bottom: 16px;
   }
-  @media (max-width: 720px) { .bi-grid, .bi-grid-3 { grid-template-columns: 1fr; } }
-  .bi-chart-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--muted); font-weight: 600; margin-bottom: 6px;
+  .bi-summary-card {
+    --metric: var(--accent);
+    position: relative; min-height: 132px; overflow: hidden;
+    padding: 18px; border: 1px solid var(--border);
+    border-radius: 14px; background: color-mix(in srgb, var(--panel) 94%, var(--metric));
+    box-shadow: 0 1px 2px rgba(15,23,42,.03), 0 10px 30px rgba(15,23,42,.035);
   }
+  .bi-summary-card::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+    background: var(--metric);
+  }
+  .bi-summary-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bi-summary-label {
+    color: var(--muted); font-size: 10px; font-weight: 700;
+    letter-spacing: .09em; text-transform: uppercase;
+  }
+  .bi-summary-value {
+    margin-top: 9px; color: var(--text); font-size: 29px; font-weight: 650;
+    letter-spacing: -.035em; line-height: 1;
+  }
+  .bi-summary-unit { margin-left: 4px; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+  .bi-summary-sub { margin-top: 7px; color: var(--muted); font-size: 11px; }
+  .bi-summary-source, .bi-source {
+    margin-top: 10px; color: color-mix(in srgb, var(--muted) 82%, transparent);
+    font-size: 9px; font-weight: 650; letter-spacing: .055em; text-transform: uppercase;
+  }
+  .bi-delta {
+    display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px;
+    border-radius: 999px; background: var(--panel-2); color: var(--muted);
+    font-size: 10px; font-weight: 700; white-space: nowrap;
+  }
+  .bi-delta.good { background: #dcfce7; color: #166534; }
+  .bi-delta.bad { background: #fee2e2; color: #991b1b; }
+  [data-theme="dark"] .bi-delta.good { background: #14532d; color: #bbf7d0; }
+  [data-theme="dark"] .bi-delta.bad { background: #7f1d1d; color: #fecaca; }
+  .bi-insight-row {
+    display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1px;
+    margin: 0 0 24px; overflow: hidden; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--border);
+  }
+  .bi-insight { display: flex; gap: 11px; padding: 15px 16px; background: var(--panel); }
+  .bi-insight-icon {
+    display: grid; place-items: center; flex: 0 0 30px; height: 30px;
+    border-radius: 9px; background: var(--accent-soft); font-size: 14px;
+  }
+  .bi-insight strong { display: block; margin-bottom: 2px; font-size: 12px; font-weight: 650; }
+  .bi-insight span { display: block; color: var(--muted); font-size: 11px; line-height: 1.45; }
+  .bi-section-heading {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    margin: 26px 0 10px;
+  }
+  .bi-section-heading h3 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .bi-section-heading p { margin: 0; color: var(--muted); font-size: 11px; }
+  .bi-chart-card {
+    min-width: 0; padding: 17px 17px 12px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--panel); box-shadow: var(--shadow);
+  }
+  .bi-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .bi-chart-label { color: var(--text); font-size: 12px; font-weight: 650; }
+  .bi-chart-note { margin-top: 2px; color: var(--muted); font-size: 10px; }
+  .bi-chart-current { text-align: right; color: var(--text); font-size: 18px; font-weight: 650; line-height: 1; }
+  .bi-chart-current small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; font-weight: 500; }
+  .bi-trend-chart { display: block; width: 100%; height: auto; min-height: 154px; overflow: visible; }
+  .bi-grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
+  .bi-axis-label { fill: var(--muted); font: 9px var(--sans); }
+  .bi-trend-area { opacity: .09; }
+  .bi-trend-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .bi-trend-dot { stroke: var(--panel); stroke-width: 2; }
+  .bi-chart-hit { fill: transparent; cursor: crosshair; }
+  .bi-quarter-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
+  .bi-quarter-bar:hover { opacity: 1; }
+  .bi-tooltip {
+    position: fixed; z-index: 1000; pointer-events: none; transform: translate(-50%, calc(-100% - 12px));
+    max-width: 190px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px; background: #10242f; color: #fff;
+    box-shadow: 0 8px 24px rgba(15,23,42,.22); font-size: 11px; line-height: 1.35;
+    opacity: 0; transition: opacity .1s ease; white-space: nowrap;
+  }
+  .bi-tooltip.visible { opacity: 1; }
+  .bi-tooltip strong { display: block; color: #fff; font-size: 11px; }
+  .bi-tooltip span { color: rgba(255,255,255,.7); }
+  .bi-empty-chart { display: grid; place-items: center; height: 154px; color: var(--muted); font-size: 11px; }
   .bi-toggle {
-    display: flex; gap: 2px; background: var(--panel);
-    border: 1px solid var(--border); border-radius: var(--radius); padding: 3px;
+    display: flex; gap: 3px; flex: 0 0 auto; background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px;
   }
   .bi-toggle-btn {
-    font-size: 12px; font-weight: 500; padding: 4px 12px;
-    border-radius: calc(var(--radius) - 2px); border: none;
+    min-width: 70px; font-size: 11px; font-weight: 600; padding: 6px 13px;
+    border-radius: 999px; border: none;
     background: transparent; color: var(--muted); cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
-  .bi-toggle-btn:hover { background: var(--hover); color: var(--fg); }
-  .bi-toggle-btn.active { background: var(--accent); color: #fff; }
+  .bi-toggle-btn:hover { background: var(--panel-2); color: var(--text); }
+  .bi-toggle-btn.active { background: var(--brand-navy-soft); color: #fff; box-shadow: 0 2px 7px rgba(15,23,42,.16); }
+  .bi-period-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px;
+    margin: 20px 0 10px; padding-top: 18px; border-top: 1px solid var(--border);
+  }
+  .bi-period-copy strong { display: block; font-family: var(--serif); font-size: 16px; font-weight: 600; }
+  .bi-period-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+  .bi-empty-state {
+    max-width: 560px; margin: 80px auto; padding: 30px; text-align: center;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--panel);
+  }
+  .bi-empty-state strong { display: block; margin-bottom: 7px; font-family: var(--serif); font-size: 20px; }
+  .bi-empty-state p { margin: 0; color: var(--muted); line-height: 1.6; }
+  @media (max-width: 900px) {
+    .bi-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bi-insight-row { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    #personal-stats-page .stats-page-inner { padding: 24px 18px 44px; }
+    .bi-hero { align-items: flex-start; flex-direction: column; gap: 16px; }
+    .bi-grid, .bi-summary-grid { grid-template-columns: 1fr; }
+    .bi-toggle { width: 100%; }
+    .bi-toggle-btn { flex: 1; min-width: 0; }
+    .bi-period-row { align-items: flex-start; flex-direction: column; }
+    .bi-section-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+  }
 
   table.weeks-table {
     width: 100%; border-collapse: collapse; font-size: 13px;
@@ -1181,7 +1301,7 @@
 </head>
 <body>
   <nav class="sidebar" id="sidebar" hidden>
-    <div class="sidebar-brand"><span class="brand-dot"></span> Agent Home</div>
+    <div class="sidebar-brand"><span class="brand-dot"></span> Hail Mary</div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Task Management</div>
       <button class="sidebar-item" data-target="today"><span class="icon">☀️</span> Today</button>
@@ -1193,17 +1313,17 @@
       <button class="sidebar-item sidebar-newproject" id="new-project-btn"><span class="icon">＋</span> New Project</button>
     </div>
     <div class="sidebar-section">
-      <div class="sidebar-section-title">Personal Intelligence</div>
-      <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Stats</button>
-      <button class="sidebar-item" data-target="personal-stats"><span class="icon">🏃</span> Personal Stats</button>
+      <div class="sidebar-section-title">Intelligence</div>
+      <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Work Productivity</button>
+      <button class="sidebar-item" data-target="personal-stats"><span class="icon">🏃</span> Personal Intelligence</button>
     </div>
   </nav>
   <div class="app-main">
     <header hidden>
       <div class="title-group">
         <div class="title-stack">
-          <div class="eyebrow">Agent Home</div>
-          <h1 id="page-title">Kanban</h1>
+          <div class="eyebrow">Hail Mary</div>
+          <h1 id="page-title">Hail Mary</h1>
         </div>
         <button class="focus-btn" id="focus-btn" title="Switch to Focus view">
           <span>🎯 Focus</span>
@@ -1220,7 +1340,6 @@
       </div>
       <div class="actions">
         <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
-        <button class="ghost" id="theme-toggle" title="Theme">🖥️</button>
         <button class="ghost" id="clear-done" title="Archive all completed tasks — they leave the board but stay in capacity stats">Clear done</button>
         <button class="ghost" id="sign-out" title="Sign out">Sign out</button>
       </div>
@@ -1255,7 +1374,7 @@
 
   <div id="auth" class="auth-overlay">
     <div class="auth-card">
-      <h2>Kanban</h2>
+      <h2>Hail Mary</h2>
       <p class="subtitle">Sign in</p>
       <form id="auth-form">
         <input type="email" placeholder="you@example.com" required autocomplete="email" />
@@ -1553,7 +1672,7 @@
     document.getElementById('personal-stats-page').hidden = !isPersonalStats;
 
     document.getElementById('page-title').textContent =
-      isToday ? 'Today' : isStats ? 'Task Management' : isPersonalStats ? 'Personal Stats' : 'Kanban';
+      isToday ? 'Today' : isStats ? 'Work Productivity' : isPersonalStats ? 'Personal Intelligence' : 'Hail Mary';
     const focusBtn = document.getElementById('focus-btn');
     focusBtn.hidden = !isKanbanPage;
     focusBtn.classList.toggle('active', isFocus);
@@ -3495,7 +3614,7 @@
 
     el.innerHTML = `
       <div class="stats-page-inner">
-        <h2>Stats — Work</h2>
+        <h2>Work Productivity</h2>
         <p class="subtitle">Throughput by completion date. 1pt = S, 2pt = M, 5pt = L, 10pt = XL.</p>
 
         <div class="summary-cards">
@@ -3559,7 +3678,10 @@
   function fetchJournal() {
     if (_journalData) return Promise.resolve(_journalData);
     if (!_journalFetch) {
-      _journalFetch = fetch('http://localhost:5173/api/journal')
+      const journalApi = ['5173', '5174'].includes(location.port)
+        ? '/api/journal'
+        : 'http://localhost:5173/api/journal';
+      _journalFetch = fetch(journalApi)
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(j => {
           _journalData = (j.entries || []).filter(e => e.week).sort((a, b) => a.week < b.week ? -1 : 1);
@@ -3580,7 +3702,7 @@
     if (state.view !== 'personal-stats') return;
 
     if (!entries) {
-      el.innerHTML = `<div class="stats-page-inner"><p style="margin-top:40px;color:var(--muted)">Could not reach journal server. Run <code style="background:var(--panel);padding:2px 6px;border-radius:4px;font-size:12px">python3 server.py</code> in the kanban folder, then click Personal Stats again.</p></div>`;
+      el.innerHTML = `<div class="stats-page-inner"><p style="margin-top:40px;color:var(--muted)">Could not reach journal server. Run <code style="background:var(--panel);padding:2px 6px;border-radius:4px;font-size:12px">python3 server.py</code> in the kanban folder, then click Personal Intelligence again.</p></div>`;
       return;
     }
 
@@ -3588,7 +3710,8 @@
     const sumOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? v.reduce((a,b) => a+b, 0) : null; };
     const fmtInt = v => v == null ? '—' : Math.round(v).toString();
     const fmt1   = v => v == null ? '—' : (+v).toFixed(1);
-    const getLabel = e => e._label || (() => { const d = new Date(e.week); return `${d.getMonth()+1}/${d.getDate()}`; })();
+    const parseLocalDate = value => new Date(`${value}T00:00:00`);
+    const getLabel = e => e._label || (() => { const d = parseLocalDate(e.week); return `${d.getMonth()+1}/${d.getDate()}`; })();
 
     // Build aggregated data for selected period
     function buildPeriodData() {
@@ -3596,7 +3719,7 @@
 
       const map = {};
       for (const e of entries) {
-        const d = new Date(e.week);
+        const d = parseLocalDate(e.week);
         let k, label;
         if (_biPeriod === 'month') {
           const mo = d.getMonth();
@@ -3612,7 +3735,7 @@
         map[k]._rows.push(e);
       }
       const keys = Object.keys(map).sort();
-      const slice = _biPeriod === 'month' ? keys.slice(-12) : keys;
+      const slice = keys.slice(-12);
       return slice.map(k => {
         const rows = map[k]._rows;
         return {
@@ -3625,163 +3748,278 @@
           weekly_weight: avgOf(rows, 'weekly_weight'), body_fat: avgOf(rows, 'body_fat'),
           stress:     avgOf(rows, 'stress'),    meditation: sumOf(rows, 'meditation'),
           articles:   sumOf(rows, 'articles'),  podcasts:   sumOf(rows, 'podcasts'),
+          consumed_cals: avgOf(rows, 'consumed_cals'), garmin_tdee: avgOf(rows, 'garmin_tdee'),
+          avg_protein: avgOf(rows, 'avg_protein'), calorie_deficit: avgOf(rows, 'calorie_deficit'),
         };
       });
     }
 
-    // Bar chart with relative scaling so variation is visible
-    function makeChart(data, key, color, valFmt, zeroBase = false) {
-      const allVals = data.map(e => e[key]).filter(v => v != null);
-      const maxVal = allVals.length ? Math.max(...allVals) : 1;
-      let minBase = 0;
-      if (!zeroBase && allVals.length > 1) {
-        const minVal = Math.min(...allVals);
-        minBase = Math.max(0, minVal - (maxVal - minVal) * 0.25);
-      }
-      const range = Math.max(0.001, maxVal - minBase);
-      return data.map((e, i) => {
-        const v = e[key];
-        const h = v != null ? Math.max(4, ((v - minBase) / range) * 100) : 0;
-        const label = getLabel(e);
-        const display = v != null ? valFmt(v) : '';
-        const opacityStyle = i === data.length - 1 ? ';opacity:1' : '';
-        return `
-          <div class="bar-col" title="${label}: ${display}">
-            <div class="bar-value">${display}</div>
-            <div class="bar-wrap"><div class="bar" style="height:${h}%;background:${color}${opacityStyle}"></div></div>
-            <div class="x-label">${label}</div>
-          </div>`;
+    function trimEmptyEdges(data, key) {
+      const first = data.findIndex(e => e[key] != null);
+      if (first < 0) return [];
+      let last = data.length - 1;
+      while (last > first && data[last][key] == null) last--;
+      return data.slice(first, last + 1);
+    }
+
+    function makeQuarterChart(data, key, color, valFmt, zeroBase = false, unit = '') {
+      data = trimEmptyEdges(data, key);
+      const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
+      if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
+      const vals = points.map(p => p.v), rawMin = Math.min(...vals), rawMax = Math.max(...vals);
+      const padding = zeroBase ? Math.max(rawMax * .08, 1) : Math.max((rawMax - rawMin) * .18, Math.abs(rawMax) * .02, 1);
+      const min = zeroBase ? 0 : Math.max(0, rawMin - padding), max = rawMax + padding;
+      const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
+      const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, slot * .62);
+      const y = v => T + (1 - (v-min)/range) * (H-T-B);
+      const grid = [0,.5,1].map(frac => {
+        const gy = T + frac*(H-T-B), gv = max-frac*range;
+        return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line><text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
       }).join('');
+      const bars = points.map(p => {
+        const cx = L + (p.i+.5)*slot, top = y(p.v), height = Math.max(2,H-B-top);
+        const tooltip = escapeHtml(`${p.label}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
+        return `<rect class="bi-quarter-bar" x="${cx-barW/2}" y="${top}" width="${barW}" height="${height}" rx="4" fill="${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
+      }).join('');
+      const labels = data.map((e,i) => i%2===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${bars}${labels}</svg>`;
+    }
+
+    function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '') {
+      if (_biPeriod === 'quarter') return makeQuarterChart(data, key, color, valFmt, zeroBase, unit);
+      data = trimEmptyEdges(data, key);
+      const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
+      if (points.length < 2) return `<div class="bi-empty-chart">Not enough data to chart yet</div>`;
+      const vals = points.map(p => p.v);
+      const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
+      const padding = zeroBase ? Math.max(rawMax * .08, 1) : Math.max((rawMax - rawMin) * .22, Math.abs(rawMax) * .025, 1);
+      const min = zeroBase ? 0 : Math.max(0, rawMin - padding);
+      const max = rawMax + padding;
+      const range = Math.max(.001, max - min);
+      const W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
+      const x = i => L + (i / Math.max(1, data.length - 1)) * (W - L - R);
+      const y = v => T + (1 - (v - min) / range) * (H - T - B);
+      const pathPoints = points.map(p => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`);
+      const line = `M ${pathPoints.join(' L ')}`;
+      const area = `${line} L ${x(points.at(-1).i).toFixed(1)},${H-B} L ${x(points[0].i).toFixed(1)},${H-B} Z`;
+      const grid = [0,.5,1].map(frac => {
+        const gy = T + frac * (H-T-B);
+        const gv = max - frac * range;
+        return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line>
+          <text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
+      }).join('');
+      const labelIndexes = [...new Set([0, Math.floor((data.length-1)/2), data.length-1])];
+      const labels = labelIndexes.map(i => `<text class="bi-axis-label" x="${x(i)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}">${escapeHtml(getLabel(data[i]))}</text>`).join('');
+      const dots = points.map((p, idx) => {
+        const periodLabel = _biPeriod === 'week' ? `Week of ${p.label}` : p.label;
+        const tooltip = escapeHtml(`${periodLabel}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
+        return `<circle class="bi-trend-dot" cx="${x(p.i)}" cy="${y(p.v)}" r="${idx===points.length-1?4:2.5}" fill="${color}"></circle><circle class="bi-chart-hit" cx="${x(p.i)}" cy="${y(p.v)}" r="10" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></circle>`;
+      }).join('');
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} trend">
+        <defs><linearGradient id="grad-${key}-${_biPeriod}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".9"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+        ${grid}<path class="bi-trend-area" d="${area}" fill="url(#grad-${key}-${_biPeriod})"></path>
+        <path class="bi-trend-line" d="${line}" stroke="${color}"></path>${dots}${labels}
+      </svg>`;
     }
 
     const periodData = buildPeriodData();
-    const periodLbl  = _biPeriod === 'week' ? 'last 16 weeks' : _biPeriod === 'month' ? 'last 12 months' : 'all quarters';
+    const periodLbl  = _biPeriod === 'week' ? 'last 16 weeks' : _biPeriod === 'month' ? 'last 12 months' : 'last 12 quarters';
     const isAgg      = _biPeriod !== 'week';
 
-    // Summary cards always use latest raw week
+    // The snapshot represents the current journal week. Eight-week baselines use
+    // the most recent logged readings so an incomplete current week stays honest.
     const latestWith = key => [...entries].reverse().find(e => e[key] != null);
-    const latestSleep  = latestWith('slp_score');
+    const currentWeek  = entries.at(-1) || {};
     const latestFit    = latestWith('training_hrs');
     const latestStress = latestWith('stress');
     const latestBody   = latestWith('weekly_weight');
     const latestLearn  = latestWith('articles');
-    const avgSlp8 = avgOf(entries.slice(-8), 'slp_score');
-    const wkLbl = e => { const d = new Date(e.week); return `${d.getMonth()+1}/${d.getDate()}`; };
+    const latestFood   = latestWith('consumed_cals');
+    const avgLastLogged = (key, count = 8) => avgOf(entries.filter(e => e[key] != null).slice(-count), key);
+    const avgSlp8 = avgLastLogged('slp_score');
+    const avgSlpHrs8 = avgLastLogged('slp_hrs');
+    const avgHrv8 = avgLastLogged('slp_hrv');
+    const avgRhr8 = avgLastLogged('rhr');
+    const timeToMinutes = value => {
+      const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+      if (!match) return null;
+      let minutes = Number(match[1]) * 60 + Number(match[2]);
+      if (minutes < 6 * 60) minutes += 24 * 60;
+      return minutes;
+    };
+    const formatClock = minutes => {
+      if (minutes == null) return null;
+      const normalized = Math.round(minutes) % (24 * 60);
+      const hour24 = Math.floor(normalized / 60);
+      const minute = normalized % 60;
+      const period = hour24 >= 12 ? 'PM' : 'AM';
+      return `${hour24 % 12 || 12}:${String(minute).padStart(2, '0')} ${period}`;
+    };
+    const loggedSleepTimes = entries.map(e => timeToMinutes(e.avg_sleep_time)).filter(v => v != null).slice(-8);
+    const avgSleepTime8 = loggedSleepTimes.length
+      ? formatClock(loggedSleepTimes.reduce((sum, value) => sum + value, 0) / loggedSleepTimes.length)
+      : null;
+    const currentSleepTime = formatClock(timeToMinutes(currentWeek.avg_sleep_time));
+    const wkLbl = e => { const d = parseLocalDate(e.week); return `${d.getMonth()+1}/${d.getDate()}`; };
 
-    const card = (label, value, sub, color) => `
-      <div class="summary-card">
-        <div class="label">${label}</div>
-        <div class="value"${color ? ` style="color:${color}"` : ''}>${value}</div>
-        <div class="sub">${sub}</div>
+    const sourceByKey = {
+      slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
+      slp_hrv:'oura.py → Notion', rhr:'oura.py → Notion',
+      training_hrs:'Garmin computer-use → Notion', intensity_mins:'Garmin computer-use → Notion', weekly_weight:'Garmin computer-use → Notion',
+      body_fat:'Garmin computer-use → Notion', stress:'Garmin computer-use → Notion', meditation:'Garmin computer-use → Notion',
+      garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
+      avg_protein:'Notion food log', calorie_deficit:'Notion formula',
+      articles:'Readwise via oura.py → Notion', podcasts:'Readwise via oura.py → Notion'
+    };
+    const sourceFor = key => sourceByKey[key] || 'Notion journal';
+
+    const previousWith = (key, current) => [...entries].reverse().find(e => e !== current && e[key] != null);
+    const deltaValue = value => Number.isInteger(value) ? String(value) : (+value).toFixed(1);
+    const delta = (key, current, inverse = false, suffix = '', unit = '') => {
+      if (!current || current[key] == null) return `<span class="bi-delta" data-tooltip="Comparison|No current value is logged" title="No current value is logged">No trend</span>`;
+      const prev = previousWith(key, current);
+      if (!prev || prev[key] == null) return `<span class="bi-delta" data-tooltip="Comparison|No previous logged week" title="No previous logged week">First reading</span>`;
+      const d = current[key] - prev[key];
+      const unitText = unit ? ` ${unit.replace('/ 100','points')}` : suffix;
+      const comparison = `Week of ${wkLbl(prev)}|${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
+      const title = `Compared with previous logged week (${wkLbl(prev)}): ${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
+      if (Math.abs(d) < .05) return `<span class="bi-delta" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">→ steady</span>`;
+      const good = inverse ? d < 0 : d > 0;
+      const shown = Math.abs(d) >= 10 ? Math.round(Math.abs(d)) : Math.abs(d).toFixed(1);
+      return `<span class="bi-delta ${good?'good':'bad'}" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">${d>0?'↑':'↓'} ${shown}${suffix}</span>`;
+    };
+    const card = ({label, key, current, value, unit='', sub, color, inverse=false, suffix='', comparisonLabel=''}) => `
+      <div class="bi-summary-card" style="--metric:${color}">
+        <div class="bi-summary-top"><div class="bi-summary-label">${label}</div>${comparisonLabel
+          ? `<span class="bi-delta" data-tooltip="Context|${escapeHtml(comparisonLabel)}" title="${escapeHtml(comparisonLabel)}">8-wk avg</span>`
+          : delta(key, current, inverse, suffix, unit)}</div>
+        <div class="bi-summary-value">${value}<span class="bi-summary-unit">${unit}</span></div>
+        <div class="bi-summary-sub">${sub}</div>
+        <div class="bi-summary-source">Source · ${sourceFor(key)}</div>
       </div>`;
 
-    const slSub = `<span class="section-sub">${periodLbl}</span>`;
+    const chartCard = (label, note, key, color, fmt, zeroBase, unit='') => {
+      const latest = [...periodData].reverse().find(e => e[key] != null);
+      const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
+      const chartBody = !apiHasField
+        ? `<div class="bi-empty-chart">Restart the journal API to load this source</div>`
+        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit);
+      return `<article class="bi-chart-card">
+        <div class="bi-chart-head">
+          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div></div>
+          <div class="bi-chart-current">${latest ? fmt(latest[key]) : '—'}${unit ? `<small>${unit}</small>` : ''}</div>
+        </div>
+        ${chartBody}
+      </article>`;
+    };
+
+    const pctChange = (current, baseline) => baseline ? Math.round(((current - baseline) / Math.abs(baseline)) * 100) : null;
+    const loggedSleep = entries.filter(e => e.slp_score != null);
+    const recent8 = loggedSleep.slice(-8), prior8 = loggedSleep.slice(-16, -8);
+    const recentSleepAvg = avgOf(recent8, 'slp_score');
+    const priorSleepAvg = avgOf(prior8, 'slp_score');
+    const sleepMove = pctChange(recentSleepAvg, priorSleepAvg);
+    const loggedTraining = entries.filter(e => e.training_hrs != null);
+    const currentTraining = loggedTraining.at(-1);
+    const priorTraining4 = loggedTraining.slice(-5, -1);
+    const trainingAvg4 = avgOf(priorTraining4, 'training_hrs');
+    const trainingMove = currentTraining && trainingAvg4 ? pctChange(currentTraining.training_hrs, trainingAvg4) : null;
+    const loggedFields = ['slp_score','slp_hrs','slp_hrv','rhr','training_hrs','stress','weekly_weight','articles'];
+    const latestRow = currentWeek;
+    const completenessCount = loggedFields.filter(k => latestRow[k] != null).length;
+    const completeness = Math.round(completenessCount / loggedFields.length * 100);
+
     const toggleHtml = ['week','month','quarter'].map(p =>
       `<button class="bi-toggle-btn${_biPeriod===p?' active':''}" data-biperiod="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</button>`
     ).join('');
 
     el.innerHTML = `
       <div class="stats-page-inner">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px">
-          <h2 style="margin:0">Personal Stats</h2>
+        <div class="bi-hero">
+          <div>
+            <div class="bi-kicker">Personal intelligence</div>
+            <h2>Health, in perspective.</h2>
+            <p class="subtitle">A clear view of recovery, training, body, and habits—so the signal is easier to spot than the noise.</p>
+            <div class="bi-updated">Current journal week · ${entries.at(-1) ? wkLbl(entries.at(-1)) : 'No entries yet'}${currentWeek.slp_score == null ? ' · Oura sleep data pending' : ''}</div>
+          </div>
+        </div>
+
+        <div class="bi-summary-grid">
+          ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:avgSlp8!=null?`${fmtInt(avgSlp8)} eight-week average`:'No history yet', color:'#6366f1'})}
+          ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:avgSlpHrs8!=null?`${fmt1(avgSlpHrs8)} hours eight-week average`:'No history yet', color:'#818cf8'})}
+          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'Restart the journal API to load sleep time', color:'#4f46e5', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time is not loaded yet'})}
+          ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'#0ea5e9'})}
+          ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'#f43f5e', inverse:true})}
+          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:latestFit?`Week of ${wkLbl(latestFit)}`:'No history yet', color:'#10b981'})}
+          ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'#f59e0b', inverse:true})}
+          ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'#8b5cf6', inverse:true, suffix:' lb'})}
+          ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`Week of ${wkLbl(latestFood)} · direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'#f97316'})}
+          ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'#ec4899'})}
+        </div>
+
+        <div class="bi-insight-row">
+          <div class="bi-insight"><div class="bi-insight-icon">◒</div><div><strong>Sleep trajectory</strong><span>${sleepMove == null ? 'Needs eight recent and eight prior logged sleep scores.' : `${fmtInt(recentSleepAvg)} average sleep score over the latest 8 logged weeks vs ${fmtInt(priorSleepAvg)} over the prior 8 (${Math.abs(sleepMove)}% ${sleepMove>=0?'higher':'lower'}).`}</span></div></div>
+          <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Training load</strong><span>${trainingMove == null ? 'Needs a current training week and prior logged weeks.' : `${fmt1(currentTraining.training_hrs)} hours in week of ${wkLbl(currentTraining)} vs ${fmt1(trainingAvg4)} average across the prior ${priorTraining4.length} logged weeks (${Math.abs(trainingMove)}% ${trainingMove>=0?'higher':'lower'}).`}</span></div></div>
+          <div class="bi-insight"><div class="bi-insight-icon">✓</div><div><strong>Journal coverage</strong><span>${completenessCount} of ${loggedFields.length} core fields present for week of ${entries.at(-1)?wkLbl(latestRow):'—'} (${completeness}%): sleep score, duration, HRV, resting HR, training, stress, weight, and articles.</span></div></div>
+        </div>
+
+        <div class="bi-period-row">
+          <div class="bi-period-copy"><strong>Explore the trends</strong><span>Week and month show trajectories; quarter compares period totals and averages.</span></div>
           <div class="bi-toggle">${toggleHtml}</div>
         </div>
-        <p class="subtitle">Health &amp; lifestyle metrics from your logging journal.</p>
 
-        <div class="summary-cards">
-          ${card('Sleep Score', latestSleep ? fmtInt(latestSleep.slp_score) : '—', avgSlp8 ? `avg ${fmtInt(avgSlp8)} last 8 wks` : 'no data', '#6366f1')}
-          ${card('HRV', latestSleep ? fmtInt(latestSleep.slp_hrv) + ' ms' : '—', latestSleep?.rhr ? `resting HR ${latestSleep.rhr} bpm` : 'last logged', '#6366f1')}
-          ${card('Training Hrs', latestFit ? fmt1(latestFit.training_hrs) : '—', latestFit ? `wk of ${wkLbl(latestFit)}` : 'no data', '#10b981')}
-          ${card('Stress', latestStress ? fmtInt(latestStress.stress) : '—', '/100 · lower is better', '#f59e0b')}
-          ${card('Weight', latestBody ? fmt1(latestBody.weekly_weight) + ' lbs' : '—', latestBody?.body_fat ? `${fmt1(latestBody.body_fat)}% body fat` : 'last logged', '#8b5cf6')}
-          ${card('Articles', latestLearn ? fmtInt(latestLearn.articles) : '—', latestLearn?.podcasts != null ? `${latestLearn.podcasts} podcasts · ${wkLbl(latestLearn)}` : 'last logged', '')}
+        <div class="bi-section-heading"><h3>Sleep &amp; recovery</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
+        <div class="bi-grid">
+          ${chartCard('Sleep score', 'Overall sleep quality', 'slp_score', '#6366f1', v=>Math.round(v), false, 'score')}
+          ${chartCard('Sleep duration', 'Average hours per night', 'slp_hrs', '#818cf8', v=>(+v).toFixed(1), false, 'hours')}
+          ${chartCard('Heart-rate variability', 'Higher generally signals recovery', 'slp_hrv', '#0ea5e9', v=>Math.round(v), false, 'ms')}
+          ${chartCard('Resting heart rate', 'Lower can indicate better recovery', 'rhr', '#f43f5e', v=>Math.round(v), false, 'bpm')}
         </div>
 
-        <div class="stats-section">
-          <h3>Sleep ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">Sleep Score</div>
-              <div class="points-chart">${makeChart(periodData, 'slp_score', '#6366f1', v => Math.round(v), false)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">Sleep Hours</div>
-              <div class="points-chart">${makeChart(periodData, 'slp_hrs', '#818cf8', v => (+v).toFixed(1), false)}</div>
-            </div>
+        <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
+        <div class="bi-grid">
+          ${chartCard(`${isAgg?'Total ':''}training time`, 'Logged endurance and strength work', 'training_hrs', '#10b981', v=>(+v).toFixed(1), true, 'hours')}
+          ${chartCard(`${isAgg?'Total ':''}intensity`, 'Moderate and vigorous minutes', 'intensity_mins', '#22c55e', v=>Math.round(v), true, 'minutes')}
+          ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', '#8b5cf6', v=>(+v).toFixed(1), false, 'lbs')}
+          ${chartCard('Body fat', 'Composition trend', 'body_fat', '#a78bfa', v=>(+v).toFixed(1), false, 'percent')}
+        </div>
+
+        <div class="bi-section-heading"><h3>Nutrition &amp; food log</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
+        <div class="bi-grid">
+          ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', '#f97316', v=>Math.round(v), true, 'kcal')}
+          ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', '#ef4444', v=>Math.round(v), false, 'kcal')}
+          ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', '#14b8a6', v=>Math.round(v), true, 'grams')}
+          ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', '#eab308', v=>Math.round(v), true, 'kcal')}
+        </div>
+
+        <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
+        <div class="bi-grid">
+          ${chartCard('Stress', 'Lower is better', 'stress', '#f59e0b', v=>Math.round(v), false, 'score')}
+          ${chartCard(`${isAgg?'Total ':''}meditation`, 'Sessions completed', 'meditation', '#d946ef', v=>Math.round(v), true, 'sessions')}
+          ${chartCard(`${isAgg?'Total ':''}articles`, 'Written learning output', 'articles', '#ec4899', v=>Math.round(v), true, 'articles')}
+          ${chartCard(`${isAgg?'Total ':''}podcasts & videos`, 'Audio and video learning', 'podcasts', '#f472b6', v=>Math.round(v), true, 'items')}
           </div>
+          <div class="bi-tooltip" role="tooltip"><strong></strong><span></span></div>
         </div>
-
-        <div class="stats-section">
-          <h3>Recovery ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">HRV (ms)</div>
-              <div class="points-chart">${makeChart(periodData, 'slp_hrv', '#6366f1', v => Math.round(v), false)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">Resting HR (bpm)</div>
-              <div class="points-chart">${makeChart(periodData, 'rhr', '#f43f5e', v => Math.round(v), false)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="stats-section">
-          <h3>Fitness ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Training Hours</div>
-              <div class="points-chart">${makeChart(periodData, 'training_hrs', '#10b981', v => (+v).toFixed(1), true)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Intensity Minutes</div>
-              <div class="points-chart">${makeChart(periodData, 'intensity_mins', '#34d399', v => Math.round(v), true)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="stats-section">
-          <h3>Body ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">Weight (lbs)</div>
-              <div class="points-chart">${makeChart(periodData, 'weekly_weight', '#8b5cf6', v => (+v).toFixed(1), false)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">Body Fat %</div>
-              <div class="points-chart">${makeChart(periodData, 'body_fat', '#a78bfa', v => (+v).toFixed(1), false)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="stats-section">
-          <h3>Mind ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">Stress Level <span class="section-sub">lower = better</span></div>
-              <div class="points-chart">${makeChart(periodData, 'stress', '#f59e0b', v => Math.round(v), false)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Meditation Sessions</div>
-              <div class="points-chart">${makeChart(periodData, 'meditation', '#a78bfa', v => Math.round(v), true)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="stats-section">
-          <h3>Learning ${slSub}</h3>
-          <div class="bi-grid">
-            <div>
-              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Articles</div>
-              <div class="points-chart">${makeChart(periodData, 'articles', '#0ea5e9', v => Math.round(v), true)}</div>
-            </div>
-            <div>
-              <div class="bi-chart-label">${isAgg ? 'Total ' : ''}Podcasts &amp; Videos</div>
-              <div class="points-chart">${makeChart(periodData, 'podcasts', '#38bdf8', v => Math.round(v), true)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
     `;
+
+    const tooltip = el.querySelector('.bi-tooltip');
+    const positionTooltip = event => {
+      tooltip.style.left = `${event.clientX}px`;
+      tooltip.style.top = `${event.clientY}px`;
+    };
+    const showTooltip = (event, target) => {
+      const [label, value] = target.dataset.tooltip.split('|');
+      tooltip.querySelector('strong').textContent = value;
+      tooltip.querySelector('span').textContent = label;
+      positionTooltip(event);
+      tooltip.classList.add('visible');
+    };
+    el.querySelectorAll('[data-tooltip]').forEach(target => {
+      target.onmouseenter = event => showTooltip(event, target);
+      target.onmousemove = positionTooltip;
+      target.onmouseleave = () => tooltip.classList.remove('visible');
+    });
 
     el.querySelectorAll('[data-biperiod]').forEach(btn => {
       btn.addEventListener('click', () => {
