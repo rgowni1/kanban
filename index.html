@@ -1592,7 +1592,7 @@
 
   let state = {
     tasks: [],
-    filter: { context: "all", timing: "all", staleness: "all", needsEffort: false },
+    filter: { context: "Work", timing: "all", staleness: "all", needsEffort: false },
     groupBy: "status",
     view: "today",
     project: null,            // null = All Tasks (top-level); otherwise a project (parent task) id
@@ -3701,13 +3701,13 @@
   function fetchJournal() {
     if (_journalData) return Promise.resolve(_journalData);
     if (!_journalFetch) {
-      const journalApi = ['5173', '5174'].includes(location.port)
-        ? '/api/journal'
-        : 'http://localhost:5173/api/journal';
-      _journalFetch = fetch(journalApi)
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(j => {
-          _journalData = (j.entries || []).filter(e => e.week).sort((a, b) => a.week < b.week ? -1 : 1);
+      _journalFetch = supabase
+        .from('journal_entries')
+        .select('*')
+        .order('week', { ascending: true })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          _journalData = (data || []).filter(e => e.week);
           return _journalData;
         })
         .catch(() => { _journalFetch = null; return null; });
@@ -3725,7 +3725,7 @@
     if (state.view !== 'personal-stats') return;
 
     if (!entries) {
-      el.innerHTML = `<div class="stats-page-inner"><p style="margin-top:40px;color:var(--muted)">Could not reach journal server. Run <code style="background:var(--panel);padding:2px 6px;border-radius:4px;font-size:12px">python3 server.py</code> in the kanban folder, then click Personal Intelligence again.</p></div>`;
+      el.innerHTML = `<div class="stats-page-inner"><p style="margin-top:40px;color:var(--muted)">Could not load Personal Intelligence data from Supabase. Confirm the journal migration and latest sync completed successfully, then try again.</p></div>`;
       return;
     }
 
@@ -3925,7 +3925,7 @@
       const latest = [...periodData].reverse().find(e => e[key] != null);
       const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
       const chartBody = !apiHasField
-        ? `<div class="bi-empty-chart">Restart the journal API to load this source</div>`
+        ? `<div class="bi-empty-chart">This metric has not been synced yet</div>`
         : makeTrendChart(periodData, key, color, fmt, zeroBase, unit);
       return `<article class="bi-chart-card">
         <div class="bi-chart-head">
@@ -3970,7 +3970,7 @@
         <div class="bi-summary-grid">
           ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:avgSlp8!=null?`${fmtInt(avgSlp8)} eight-week average`:'No history yet', color:'#6366f1'})}
           ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:avgSlpHrs8!=null?`${fmt1(avgSlpHrs8)} hours eight-week average`:'No history yet', color:'#818cf8'})}
-          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'Restart the journal API to load sleep time', color:'#4f46e5', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time is not loaded yet'})}
+          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'#4f46e5', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
           ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'#0ea5e9'})}
           ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'#f43f5e', inverse:true})}
           ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:latestFit?`Week of ${wkLbl(latestFit)}`:'No history yet', color:'#10b981'})}
