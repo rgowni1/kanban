@@ -915,6 +915,12 @@
   .tw-pill.time { background: transparent; color: var(--muted); border: none; font-size: 11px; }
   [data-theme="dark"] .tw-pill.ctx-work { background: #4c1d95; color: #ede9fe; }
   [data-theme="dark"] .tw-pill.ctx-personal { background: #14532d; color: #bbf7d0; }
+  .tw-effort-picker { display: flex; align-items: center; gap: 6px; padding: 6px 16px 10px 44px; flex-wrap: wrap; }
+  .tw-effort-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+  .tw-effort-btn { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.1s; }
+  .tw-effort-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tw-effort-hint { font-weight: 400; color: var(--muted); font-size: 10px; }
+  .tw-effort-btn:hover .tw-effort-hint { color: rgba(255,255,255,0.8); }
 
   /* Focus view */
   #focus-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
@@ -1362,8 +1368,8 @@
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Intelligence</div>
-      <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Work Productivity</button>
       <button class="sidebar-item" data-target="personal-stats"><span class="icon">🏃</span> Personal Intelligence</button>
+      <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Work Productivity</button>
     </div>
   </nav>
   <div class="app-main">
@@ -2474,6 +2480,16 @@
     };
     const totalPts = weekDone.reduce((s, t) => s + (POINTS[t.effort] || 0), 0);
 
+    const EFFORT_HINTS = { S: '~15 min', M: '~30 min', L: '~2 hr', XL: '~4 hr+' };
+    const effortPicker = (task) => `
+      <div class="tw-effort-picker" data-id="${escapeHtml(task.id)}">
+        <span class="tw-effort-label">Add effort:</span>
+        ${['S','M','L','XL'].map(e => `
+          <button class="tw-effort-btn" data-effort="${e}" data-task-id="${escapeHtml(task.id)}" title="${EFFORT_HINTS[e]}">
+            ${e}<span class="tw-effort-hint">${EFFORT_HINTS[e]}</span>
+          </button>`).join('')}
+      </div>`;
+
     const items = weekDone.map(task => {
       const pills = [];
       if (task.context) {
@@ -2490,7 +2506,8 @@
           <span class="tw-check">✓</span>
           <span class="tw-title-text">${escapeHtml(task.title)}</span>
           <div class="tw-pills">${pills.join('')}</div>
-        </li>`;
+        </li>
+        ${!task.effort ? effortPicker(task) : ''}`;
     }).join('');
 
     const emptyMsg = `<li style="padding:20px;color:var(--muted);font-size:14px">No tasks completed this week yet.</li>`;
@@ -2506,6 +2523,13 @@
 
     root.querySelectorAll('.tw-item').forEach(el => {
       el.addEventListener('click', () => openDrawer(el.dataset.id));
+    });
+    root.querySelectorAll('.tw-effort-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await patchTask(btn.dataset.taskId, { effort: btn.dataset.effort });
+        renderThisWeek();
+      });
     });
   }
 
