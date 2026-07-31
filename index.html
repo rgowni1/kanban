@@ -896,6 +896,26 @@
   }
   .drawer-timestamps .ts-reset:hover { border-color: var(--accent, #6366f1); }
 
+  /* This Week view */
+  #this-week-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
+  .tw-wrap { max-width: 760px; margin: 0 auto; }
+  .tw-head { margin-bottom: 20px; }
+  .tw-title { font-size: 22px; font-weight: 700; color: var(--text); }
+  .tw-subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .tw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .tw-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background 0.1s; }
+  .tw-item:hover { background: var(--panel-2); }
+  .tw-check { color: #22c55e; font-size: 15px; flex-shrink: 0; }
+  .tw-title-text { flex: 1; font-size: 14px; color: var(--text); font-weight: 500; }
+  .tw-pills { display: flex; gap: 6px; align-items: center; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .tw-pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 500; }
+  .tw-pill.ctx-work { background: #ede9fe; color: #5b21b6; }
+  .tw-pill.ctx-personal { background: #dcfce7; color: #166534; }
+  .tw-pill.effort { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .tw-pill.time { background: transparent; color: var(--muted); border: none; font-size: 11px; }
+  [data-theme="dark"] .tw-pill.ctx-work { background: #4c1d95; color: #ede9fe; }
+  [data-theme="dark"] .tw-pill.ctx-personal { background: #14532d; color: #bbf7d0; }
+
   /* Focus view */
   #focus-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
   .focus-wrap { max-width: 1100px; margin: 0 auto; }
@@ -1332,6 +1352,7 @@
     <div class="sidebar-section">
       <div class="sidebar-section-title">Task Management</div>
       <button class="sidebar-item" data-target="today"><span class="icon">☀️</span> Today</button>
+      <button class="sidebar-item" data-target="this-week"><span class="icon">✅</span> This Week</button>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Projects</div>
@@ -1394,6 +1415,7 @@
     <div class="stats-strip" id="stats-strip" hidden></div>
     <div class="project-bar" id="project-bar" hidden></div>
     <section id="today-view" hidden></section>
+    <section id="this-week-view" hidden></section>
     <main id="board" hidden></main>
     <section id="focus-view" hidden></section>
     <section id="stats-page" hidden></section>
@@ -1690,6 +1712,7 @@
     const isFocus = state.view === 'focus';
     const isStats = state.view === 'stats';
     const isPersonalStats = state.view === 'personal-stats';
+    const isThisWeek = state.view === 'this-week';
     const isKanbanPage = isBoard || isFocus;
 
     document.getElementById('toolbar').hidden = !isBoard;
@@ -1700,9 +1723,10 @@
     document.getElementById('focus-view').hidden = !isFocus;
     document.getElementById('stats-page').hidden = !isStats;
     document.getElementById('personal-stats-page').hidden = !isPersonalStats;
+    document.getElementById('this-week-view').hidden = !isThisWeek;
 
     document.getElementById('page-title').textContent =
-      isToday ? 'Today' : isStats ? 'Work Productivity' : isPersonalStats ? 'Personal Intelligence' : 'Hail Mary';
+      isToday ? 'Today' : isThisWeek ? 'This Week' : isStats ? 'Work Productivity' : isPersonalStats ? 'Personal Intelligence' : 'Hail Mary';
     const focusBtn = document.getElementById('focus-btn');
     focusBtn.hidden = !isKanbanPage;
     focusBtn.classList.toggle('active', isFocus);
@@ -1711,7 +1735,8 @@
       const isActive = (b.dataset.target === 'today' && isToday)
                     || (b.dataset.target === 'kanban' && isKanbanPage)
                     || (b.dataset.target === 'stats' && isStats)
-                    || (b.dataset.target === 'personal-stats' && isPersonalStats);
+                    || (b.dataset.target === 'personal-stats' && isPersonalStats)
+                    || (b.dataset.target === 'this-week' && isThisWeek);
       b.classList.toggle('active', isActive);
     });
 
@@ -1728,6 +1753,8 @@
       renderFocus();
     } else if (isPersonalStats) {
       renderPersonalStatsPage();
+    } else if (isThisWeek) {
+      renderThisWeek();
     } else {
       renderStatsPage();
     }
@@ -2426,27 +2453,58 @@
             <ul class="today-list">${poolBody}</ul>
           </section>
         </div>
-        ${(() => {
-          const weekStart = new Date(); weekStart.setHours(0,0,0,0);
-          weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-          const weekDone = state.tasks
-            .filter(t => t.status === 'done' && !t.archived && t.completedAt && new Date(t.completedAt) >= weekStart)
-            .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
-          if (!weekDone.length) return '';
-          const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-          const fmtDay = ts => { const d = new Date(ts); if (d.toDateString() === new Date().toDateString()) return 'Today'; return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; };
-          const items = weekDone.map(t => `
-            <li class="week-stream-item" data-id="${escapeHtml(t.id)}" style="cursor:pointer">
-              <span class="week-stream-check">✓</span>
-              <span class="week-stream-title-text">${escapeHtml(t.title)}</span>
-              ${t.context ? `<span class="week-stream-ctx ${t.context === 'Work' ? 'work' : 'personal'}">${escapeHtml(t.context)}</span>` : ''}
-              <span class="week-stream-time">${fmtDay(t.completedAt)} ${fmtTime(t.completedAt)}</span>
-            </li>`).join('');
-          return `<div class="week-stream"><div class="week-stream-head"><span class="week-stream-title">This Week</span><span class="week-stream-count">${weekDone.length} completed</span></div><ul class="week-stream-list">${items}</ul></div>`;
-        })()}
       </div>`;
     syncTodayAddForm();
-    root.querySelectorAll('.week-stream-item').forEach(el => {
+  }
+
+  function renderThisWeek() {
+    const root = document.getElementById('this-week-view');
+    const weekStart = new Date(); weekStart.setHours(0,0,0,0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
+    const weekDone = state.tasks
+      .filter(t => t.status === 'done' && !t.archived && t.completedAt && new Date(t.completedAt) >= weekStart)
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+    const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
+    const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const fmtDay = ts => {
+      const d = new Date(ts); const t = new Date();
+      if (d.toDateString() === t.toDateString()) return 'Today';
+      return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    };
+    const totalPts = weekDone.reduce((s, t) => s + (POINTS[t.effort] || 0), 0);
+
+    const items = weekDone.map(task => {
+      const pills = [];
+      if (task.context) {
+        const cls = task.context === 'Work' ? 'ctx-work' : 'ctx-personal';
+        pills.push(`<span class="tw-pill ${cls}">${escapeHtml(task.context)}</span>`);
+      }
+      if (task.effort) {
+        const pts = POINTS[task.effort] || 0;
+        pills.push(`<span class="tw-pill effort">${escapeHtml(task.effort)} · ${pts}pt${pts === 1 ? '' : 's'}</span>`);
+      }
+      pills.push(`<span class="tw-pill time">${fmtDay(task.completedAt)} ${fmtTime(task.completedAt)}</span>`);
+      return `
+        <li class="tw-item" data-id="${escapeHtml(task.id)}">
+          <span class="tw-check">✓</span>
+          <span class="tw-title-text">${escapeHtml(task.title)}</span>
+          <div class="tw-pills">${pills.join('')}</div>
+        </li>`;
+    }).join('');
+
+    const emptyMsg = `<li style="padding:20px;color:var(--muted);font-size:14px">No tasks completed this week yet.</li>`;
+
+    root.innerHTML = `
+      <div class="tw-wrap">
+        <div class="tw-head">
+          <div class="tw-title">This Week</div>
+          <div class="tw-subtitle">${weekDone.length} completed · ${totalPts} points</div>
+        </div>
+        <ul class="tw-list">${weekDone.length ? items : emptyMsg}</ul>
+      </div>`;
+
+    root.querySelectorAll('.tw-item').forEach(el => {
       el.addEventListener('click', () => openDrawer(el.dataset.id));
     });
   }
@@ -4429,6 +4487,7 @@
     else if (target === 'kanban') state.view = (state.view === 'focus') ? 'focus' : 'board';
     else if (target === 'stats') state.view = 'stats';
     else if (target === 'personal-stats') state.view = 'personal-stats';
+    else if (target === 'this-week') state.view = 'this-week';
     if (target) applyView();
   });
 
