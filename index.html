@@ -3906,10 +3906,11 @@
       const unitText = unit ? ` ${unit.replace('/ 100','points')}` : suffix;
       const comparison = `Week of ${wkLbl(prev)}|${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
       const title = `Compared with previous logged week (${wkLbl(prev)}): ${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
-      if (Math.abs(d) < .05) return `<span class="bi-delta" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">→ steady</span>`;
+      const weekRange = `${wkLbl(prev)}→${wkLbl(current)}`;
+      if (Math.abs(d) < .05) return `<span class="bi-delta" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">→ steady · ${weekRange}</span>`;
       const good = inverse ? d < 0 : d > 0;
       const shown = Math.abs(d) >= 10 ? Math.round(Math.abs(d)) : Math.abs(d).toFixed(1);
-      return `<span class="bi-delta ${good?'good':'bad'}" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">${d>0?'↑':'↓'} ${shown}${suffix}</span>`;
+      return `<span class="bi-delta ${good?'good':'bad'}" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">${d>0?'↑':'↓'} ${shown}${suffix} · ${weekRange}</span>`;
     };
     const card = ({label, key, current, value, unit='', sub, color, inverse=false, suffix='', comparisonLabel=''}) => `
       <div class="bi-summary-card" style="--metric:${color}">
@@ -3917,7 +3918,7 @@
           ? `<span class="bi-delta" data-tooltip="Context|${escapeHtml(comparisonLabel)}" title="${escapeHtml(comparisonLabel)}">8-wk avg</span>`
           : delta(key, current, inverse, suffix, unit)}</div>
         <div class="bi-summary-value">${value}<span class="bi-summary-unit">${unit}</span></div>
-        <div class="bi-summary-sub">${sub}</div>
+        <div class="bi-summary-sub">${current && current.week ? `Week of ${wkLbl(current)} · ` : ''}${sub}</div>
         <div class="bi-summary-source">Source · ${sourceFor(key)}</div>
       </div>`;
 
@@ -3973,10 +3974,10 @@
           ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'#4f46e5', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
           ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'#0ea5e9'})}
           ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'#f43f5e', inverse:true})}
-          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:latestFit?`Week of ${wkLbl(latestFit)}`:'No history yet', color:'#10b981'})}
+          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:latestFit?``:'No history yet', color:'#10b981'})}
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'#f59e0b', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'#8b5cf6', inverse:true, suffix:' lb'})}
-          ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`Week of ${wkLbl(latestFood)} · direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'#f97316'})}
+          ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'#f97316'})}
           ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'#ec4899'})}
         </div>
 
