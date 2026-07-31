@@ -2426,8 +2426,29 @@
             <ul class="today-list">${poolBody}</ul>
           </section>
         </div>
+        ${(() => {
+          const weekStart = new Date(); weekStart.setHours(0,0,0,0);
+          weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+          const weekDone = state.tasks
+            .filter(t => t.status === 'done' && !t.archived && t.completedAt && new Date(t.completedAt) >= weekStart)
+            .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+          if (!weekDone.length) return '';
+          const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+          const fmtDay = ts => { const d = new Date(ts); if (d.toDateString() === new Date().toDateString()) return 'Today'; return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; };
+          const items = weekDone.map(t => `
+            <li class="week-stream-item" data-id="${escapeHtml(t.id)}" style="cursor:pointer">
+              <span class="week-stream-check">✓</span>
+              <span class="week-stream-title-text">${escapeHtml(t.title)}</span>
+              ${t.context ? `<span class="week-stream-ctx ${t.context === 'Work' ? 'work' : 'personal'}">${escapeHtml(t.context)}</span>` : ''}
+              <span class="week-stream-time">${fmtDay(t.completedAt)} ${fmtTime(t.completedAt)}</span>
+            </li>`).join('');
+          return `<div class="week-stream"><div class="week-stream-head"><span class="week-stream-title">This Week</span><span class="week-stream-count">${weekDone.length} completed</span></div><ul class="week-stream-list">${items}</ul></div>`;
+        })()}
       </div>`;
     syncTodayAddForm();
+    root.querySelectorAll('.week-stream-item').forEach(el => {
+      el.addEventListener('click', () => openDrawer(el.dataset.id));
+    });
   }
 
   // Restore the inline add-form's open state + selections after each render,
