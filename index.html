@@ -139,6 +139,22 @@
     background: rgba(255,255,255,0.08); color: #fff;
   }
 
+  /* Shortcut explorer */
+  .shortcut-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9000; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; }
+  .shortcut-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 560px; max-height: 70vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+  .shortcut-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+  .shortcut-header input { width: 100%; background: transparent; border: none; outline: none; font-size: 15px; color: var(--text); }
+  .shortcut-header input::placeholder { color: var(--muted); }
+  .shortcut-body { overflow-y: auto; padding: 8px 0 16px; }
+  .shortcut-group { padding: 12px 20px 4px; }
+  .shortcut-group-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+  .shortcut-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-radius: 7px; cursor: pointer; gap: 12px; }
+  .shortcut-row:hover { background: var(--panel-2); padding: 7px 10px; margin: 0 -10px; }
+  .shortcut-desc { font-size: 13px; color: var(--text); }
+  .shortcut-keys { display: flex; gap: 4px; flex-shrink: 0; }
+  .shortcut-key { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); font-family: monospace; white-space: nowrap; }
+  .shortcut-footer { padding: 10px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); display: flex; gap: 16px; }
+
   /* Focus callout button */
   .focus-btn {
     background: var(--accent);
@@ -4453,6 +4469,75 @@
     document.body.appendChild(backdrop);
   }
 
+  function openShortcutExplorer() {
+    if (document.querySelector('.shortcut-backdrop')) return;
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const mod = isMac ? '⌘' : 'Ctrl';
+    const groups = [
+      { label: 'Navigation', rows: [
+        { desc: 'Open shortcut explorer', keys: [`${mod}K`] },
+        { desc: 'Go to Today / quick-add task', keys: [`${mod}K`, 'then N'] },
+        { desc: 'Navigate tasks (board)', keys: ['J', 'K'] },
+        { desc: 'Move task to column 1–5', keys: ['1–5'] },
+      ]},
+      { label: 'Tasks', rows: [
+        { desc: 'New task in focused column', keys: ['N'] },
+        { desc: 'Open task drawer', keys: ['Enter'] },
+        { desc: 'Expand / collapse drawer', keys: ['E'] },
+        { desc: 'Close drawer', keys: ['Esc'] },
+        { desc: 'Delete focused task', keys: [`${mod}⌫`] },
+      ]},
+      { label: 'Editing', rows: [
+        { desc: 'Undo', keys: [`${mod}Z`] },
+        { desc: 'Redo', keys: [`${mod}⇧Z`] },
+        { desc: 'Open drawer (alternate)', keys: [`${mod}E`] },
+      ]},
+      { label: 'Effort (This Week backfill)', rows: [
+        { desc: 'Small  (~15 min · 1 pt)', keys: ['S'] },
+        { desc: 'Medium (~30 min · 2 pts)', keys: ['M'] },
+        { desc: 'Large  (~2 hr  · 5 pts)', keys: ['L'] },
+        { desc: 'XL     (~4 hr+ · 10 pts)', keys: ['X'] },
+      ]},
+    ];
+
+    const renderGroups = (filter) => groups.map(g => {
+      const rows = g.rows.filter(r => !filter || r.desc.toLowerCase().includes(filter.toLowerCase()));
+      if (!rows.length) return '';
+      return `<div class="shortcut-group">
+        <div class="shortcut-group-label">${g.label}</div>
+        ${rows.map(r => `
+          <div class="shortcut-row">
+            <span class="shortcut-desc">${r.desc}</span>
+            <span class="shortcut-keys">${r.keys.map(k => `<span class="shortcut-key">${k}</span>`).join('')}</span>
+          </div>`).join('')}
+      </div>`;
+    }).join('');
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'shortcut-backdrop';
+    backdrop.innerHTML = `
+      <div class="shortcut-modal">
+        <div class="shortcut-header"><input id="shortcut-search" placeholder="Search shortcuts…" autocomplete="off" /></div>
+        <div class="shortcut-body">${renderGroups('')}</div>
+        <div class="shortcut-footer"><span>↑↓ navigate</span><span>Esc to close</span><span>${mod}K to toggle</span></div>
+      </div>`;
+
+    const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+    const search = backdrop.querySelector('#shortcut-search');
+    const body = backdrop.querySelector('.shortcut-body');
+    search.addEventListener('input', () => { body.innerHTML = renderGroups(search.value); });
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); close(); }
+    };
+    document.addEventListener('keydown', onKey, { capture: true });
+    document.body.appendChild(backdrop);
+    setTimeout(() => search.focus(), 30);
+  }
+
   document.getElementById("clear-done").addEventListener("click", () => {
     const done = state.tasks.filter(t => t.status === "done" && !t.archived);
     if (done.length === 0) return;
@@ -4617,11 +4702,7 @@
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "k") {
       e.preventDefault();
-      if (state.view !== 'today') { state.view = 'today'; applyView(); }
-      setTimeout(() => {
-        const inp = document.getElementById('today-add-input');
-        if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-      }, 50);
+      openShortcutExplorer();
       return;
     }
     if (mod && e.key.toLowerCase() === "z") {
