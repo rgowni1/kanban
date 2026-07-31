@@ -899,6 +899,20 @@
   /* Focus view */
   #focus-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
   .focus-wrap { max-width: 1100px; margin: 0 auto; }
+  .week-stream { margin-top: 28px; }
+  .week-stream-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .week-stream-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .week-stream-count { font-size: 12px; color: var(--muted); }
+  .week-stream-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .week-stream-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+  .week-stream-check { color: #22c55e; font-size: 14px; flex-shrink: 0; }
+  .week-stream-title-text { flex: 1; color: var(--text); }
+  .week-stream-ctx { font-size: 11px; padding: 2px 7px; border-radius: 99px; flex-shrink: 0; }
+  .week-stream-ctx.work { background: #ede9fe; color: #5b21b6; }
+  .week-stream-ctx.personal { background: #dcfce7; color: #166534; }
+  [data-theme="dark"] .week-stream-ctx.work { background: #4c1d95; color: #ede9fe; }
+  [data-theme="dark"] .week-stream-ctx.personal { background: #14532d; color: #bbf7d0; }
+  .week-stream-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
   .focus-grid {
     display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px;
   }
@@ -1353,6 +1367,7 @@
       </div>
       <div class="actions">
         <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
+        <button class="ghost" id="theme-toggle" title="Toggle theme">🖥️</button>
         <button class="ghost" id="clear-done" title="Archive all completed tasks — they leave the board but stay in capacity stats">Clear done</button>
         <button class="ghost" id="sign-out" title="Sign out">Sign out</button>
       </div>
@@ -2602,8 +2617,13 @@
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(todayStart.getDate() - ((todayStart.getDay() + 6) % 7)); // Monday
     const doneTasks = state.tasks
       .filter(t => t.status === 'done' && !t.archived && inContext(t) && t.completedAt && new Date(t.completedAt) >= todayStart)
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    const weekDoneTasks = state.tasks
+      .filter(t => t.status === 'done' && !t.archived && t.completedAt && new Date(t.completedAt) >= weekStart)
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
 
     const cardHtml = (task) => {
@@ -2661,6 +2681,35 @@
       `).join('')
       : `<div class="focus-empty">Drag tasks here to complete them.</div>`;
 
+    const weekStreamHtml = (() => {
+      if (!weekDoneTasks.length) return '';
+      const fmtTime = ts => {
+        const d = new Date(ts);
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      };
+      const fmtDay = ts => {
+        const d = new Date(ts); const t = new Date();
+        if (d.toDateString() === t.toDateString()) return 'Today';
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return days[d.getDay()];
+      };
+      const items = weekDoneTasks.map(t => `
+        <li class="week-stream-item" data-id="${escapeHtml(t.id)}" style="cursor:pointer">
+          <span class="week-stream-check">✓</span>
+          <span class="week-stream-title-text">${escapeHtml(t.title)}</span>
+          ${t.context ? `<span class="week-stream-ctx ${t.context === 'Work' ? 'work' : 'personal'}">${escapeHtml(t.context)}</span>` : ''}
+          <span class="week-stream-time">${fmtDay(t.completedAt)} ${fmtTime(t.completedAt)}</span>
+        </li>`).join('');
+      return `
+        <div class="week-stream">
+          <div class="week-stream-head">
+            <span class="week-stream-title">This Week</span>
+            <span class="week-stream-count">${weekDoneTasks.length} completed</span>
+          </div>
+          <ul class="week-stream-list">${items}</ul>
+        </div>`;
+    })();
+
     root.innerHTML = `
       <div class="focus-wrap">
         <div class="focus-grid">
@@ -2691,6 +2740,7 @@
             <ul class="focus-list">${doneList}</ul>
           </div>
         </div>
+        ${weekStreamHtml}
       </div>
     `;
 
@@ -2819,6 +2869,10 @@
         if (!task || task.status !== 'focus') return;
         patchTask(id, { status: target.dataset.moveStatus });
       });
+    });
+
+    root.querySelectorAll('.week-stream-item').forEach(el => {
+      el.addEventListener('click', () => openDrawer(el.dataset.id));
     });
 
     // Quick-add a Focus task directly in this view (lands in "No estimate" — drag to size it).
