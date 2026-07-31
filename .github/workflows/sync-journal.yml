@@ -1,0 +1,27 @@
+name: Sync journal to Supabase
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 13 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sync Notion journal
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_JOURNAL_DB_ID: ${{ secrets.NOTION_JOURNAL_DB_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          KANBAN_USER_ID: ${{ secrets.KANBAN_USER_ID }}
+        run: python3 sync_journal_to_supabase.py
