@@ -917,10 +917,14 @@
   [data-theme="dark"] .tw-pill.ctx-personal { background: #14532d; color: #bbf7d0; }
   .tw-effort-picker { display: flex; align-items: center; gap: 6px; padding: 6px 16px 10px 44px; flex-wrap: wrap; }
   .tw-effort-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
-  .tw-effort-btn { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.1s; }
-  .tw-effort-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tw-effort-btn { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .tw-effort-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); padding: 3px 14px; }
+  .tw-effort-key { font-weight: 700; }
+  .tw-effort-full { display: none; font-weight: 400; }
   .tw-effort-hint { font-weight: 400; color: var(--muted); font-size: 10px; }
-  .tw-effort-btn:hover .tw-effort-hint { color: rgba(255,255,255,0.8); }
+  .tw-effort-btn:hover .tw-effort-full { display: inline; }
+  .tw-effort-btn:hover .tw-effort-key { display: none; }
+  .tw-effort-btn:hover .tw-effort-hint { color: rgba(255,255,255,0.75); }
 
   /* Focus view */
   #focus-view { padding: 28px 24px 80px; overflow-y: auto; flex: 1; }
@@ -2481,12 +2485,13 @@
     const totalPts = weekDone.reduce((s, t) => s + (POINTS[t.effort] || 0), 0);
 
     const EFFORT_HINTS = { S: '~15 min', M: '~30 min', L: '~2 hr', XL: '~4 hr+' };
+    const EFFORT_LABELS = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra Large' };
     const effortPicker = (task) => `
       <div class="tw-effort-picker" data-id="${escapeHtml(task.id)}">
         <span class="tw-effort-label">Add effort:</span>
         ${['S','M','L','XL'].map(e => `
-          <button class="tw-effort-btn" data-effort="${e}" data-task-id="${escapeHtml(task.id)}" title="${EFFORT_HINTS[e]}">
-            ${e}<span class="tw-effort-hint">${EFFORT_HINTS[e]}</span>
+          <button class="tw-effort-btn" data-effort="${e}" data-task-id="${escapeHtml(task.id)}" title="${EFFORT_LABELS[e]} · ${EFFORT_HINTS[e]}">
+            <span class="tw-effort-key">${e}</span><span class="tw-effort-full">${EFFORT_LABELS[e]}</span><span class="tw-effort-hint"> · ${EFFORT_HINTS[e]}</span>
           </button>`).join('')}
       </div>`;
 
@@ -4610,6 +4615,15 @@
     if (!currentUser) return;
 
     const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (state.view !== 'today') { state.view = 'today'; applyView(); }
+      setTimeout(() => {
+        const inp = document.getElementById('today-add-input');
+        if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 50);
+      return;
+    }
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) performRedo(); else performUndo();
