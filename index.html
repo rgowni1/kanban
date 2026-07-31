@@ -2416,12 +2416,17 @@
       </li>`;
     // Don't list a focused subtask at the top level if its project is also focused —
     // it already shows nested under that project below.
-    const focusTop = focus.filter(t => !(t.parentId && focusedProjectIds.has(t.parentId)));
     // Only genuinely focused children appear under a focused project. Unfocused
     // siblings stay in Available so every visible card can move independently.
     const focusNested = (pid) => {
       return childrenOf(pid).filter(c => c.status === 'focus').sort(byDueThenStatus);
     };
+    // Projects with no focused children are excluded from Focus — an empty project
+    // card is noise. They stay in Available until a child task is also focused.
+    const focusTop = focus.filter(t =>
+      !(t.parentId && focusedProjectIds.has(t.parentId)) &&
+      !(isProject(t) && focusNested(t.id).length === 0)
+    );
     const focusBody = focusTop.length
       ? focusTop.map(t => isProject(t)
           ? projectFocusCard(t) + focusNested(t.id).map(focusChildCard).join('')
