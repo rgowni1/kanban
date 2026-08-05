@@ -715,7 +715,10 @@
     padding: 2px 4px; text-transform: uppercase; letter-spacing: 0.04em;
   }
   .today-pane-head-right { display: flex; align-items: center; gap: 8px; }
-  .today-pane-count { font-weight: 500; }
+  .today-pane-count { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .today-pane-count.over { color: var(--danger); font-weight: 700; }
+  /* Today is a wide two-column layout — keep the legend on one line there. */
+  .today-wrap .eff-legend { margin: 0 0 14px; }
   .today-drop-hint {
     color: var(--accent); font-size: 10px; font-weight: 600;
     text-transform: none; letter-spacing: 0; opacity: 0;
@@ -1641,6 +1644,18 @@
     for (const c of Object.keys(FOCUS_CAPS)) live.add(c);
     return [...live].sort((a, b) => (a || '~').localeCompare(b || '~'));
   }
+  // The count shown on any Focus heading. Scoped to one context it can name that
+  // context's ceiling; in "All" it falls back to the per-context breakdown,
+  // because a combined total has no single cap to be measured against.
+  function focusCountLabel(ctx, n) {
+    if (ctx === 'all') return focusCapSummary() || `${n}`;
+    return focusCapped(ctx) ? `${n}/${focusCapFor(ctx)}` : `${n}`;
+  }
+  function focusIsOver(ctx, n) {
+    return ctx === 'all'
+      ? focusContexts().some(c => focusCountFor(c) > focusCapFor(c))
+      : n > focusCapFor(ctx);
+  }
   // "W 4/7 · P 3" — compact enough for a column head, and the per-context
   // figure is the one that actually gates whether another task fits.
   function focusCapSummary() {
@@ -2298,18 +2313,10 @@
       let overCap = false;
       let countLabel = `${tasks.length}`;
       if (isFocusCol) {
-        if (state.filter.context !== "all") {
-          // Viewing a single context — tasks are already scoped to it.
-          const capCtx = state.filter.context;
-          overCap = tasks.length > focusCapFor(capCtx);
-          countLabel = focusCapped(capCtx) ? `${tasks.length}/${focusCapFor(capCtx)}` : `${tasks.length}`;
-        } else {
-          // "All" view — cap is per-context, so flag if any one context is over.
-          // A bare total hid how close each context was to its own ceiling, which
-          // is the only number that governs whether another task can go in.
-          overCap = focusCountFor("Work") > focusCapFor("Work") || focusCountFor("Personal") > focusCapFor("Personal");
-          countLabel = focusCapSummary() || `${tasks.length}`;
-        }
+        // Same helper the Today view uses, so the two never disagree about how
+        // much Focus room is left.
+        countLabel = focusCountLabel(state.filter.context, tasks.length);
+        overCap = focusIsOver(state.filter.context, tasks.length);
       }
       if (overCap) colEl.classList.add("over-cap");
       const addBtn = state.groupBy === "status"
@@ -2563,9 +2570,10 @@
           <h2 class="today-title">Today</h2>
           <span class="today-date">${escapeHtml(dateStr)}</span>
         </div>
+        ${effortLegendHtml()}
         <div class="today-grid">
           <section class="today-pane" data-today-drop="focus">
-            <div class="today-pane-head"><span>Focus</span><span class="today-pane-head-right"><span class="today-drop-hint">Drop to focus</span><span class="today-pane-count">${focus.length}</span></span></div>
+            <div class="today-pane-head"><span>Focus</span><span class="today-pane-head-right"><span class="today-drop-hint">Drop to focus</span><span class="today-pane-count${focusIsOver(ctx, focus.length) ? ' over' : ''}">${escapeHtml(focusCountLabel(ctx, focus.length))}</span></span></div>
             <ul class="today-list">${focusBody}</ul>
           </section>
           <section class="today-pane" data-today-drop="available">
