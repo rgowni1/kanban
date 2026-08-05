@@ -14,6 +14,8 @@ from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 NOTION_VERSION = "2022-06-28"
+# Below this daily average the food log was abandoned mid-week, not eaten.
+MIN_PLAUSIBLE_DAILY_CALS = 900
 
 
 def load_env(path=".env"):
@@ -71,7 +73,7 @@ def page_to_row(page, user_id, synced_at):
         parts = (props.get(name) or {}).get("rich_text", [])
         return "".join(part.get("plain_text", "") for part in parts) or None
 
-    return {
+    row = {
         "user_id": user_id,
         "week": date_value("Week of Journal"),
         "notion_page_id": page.get("id"),
@@ -103,6 +105,20 @@ def page_to_row(page, user_id, synced_at):
         "calorie_deficit": formula_number("Calorie Deficit"),
         "garmin_tdee": number("Garmin TDEE"),
     }
+
+    # The Notion food-log formulas average only the days that were actually
+    # logged, so a week where logging was abandoned after one meal reports a
+    # real-looking-but-tiny daily average (e.g. week of 2026-04-27: 201 kcal,
+    # 13 g protein) that wrecks every nutrition trend. Treat a week below a
+    # subsistence floor as unlogged rather than as a genuine near-fast, and drop
+    # the whole nutrition triple together since the deficit is derived from
+    # intake. Every genuinely logged week to date sits above 1200 kcal/day.
+    if row["consumed_cals"] is not None and row["consumed_cals"] < MIN_PLAUSIBLE_DAILY_CALS:
+        row["consumed_cals"] = None
+        row["avg_protein"] = None
+        row["calorie_deficit"] = None
+
+    return row
 
 
 def fetch_notion_rows(token, database_id, user_id):

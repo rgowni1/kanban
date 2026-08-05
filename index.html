@@ -39,6 +39,16 @@
     --radius: 8px;
     --serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
     --sans: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    /* Personal Intelligence series hues — one per section, so colour means
+       "which part of life" instead of being 16 arbitrary decorations. Validated
+       all-pairs (small-multiples grid) against the chart surface in both modes:
+       worst CVD ΔE 9.2 light / 9.4 dark, worst normal-vision ΔE 17.2 / 19.7.
+       One mark per mode sits under 3:1, which the always-visible card label and
+       section heading relieve — colour never carries meaning on its own here. */
+    --viz-sleep: #2a78d6;
+    --viz-body:  #1baf7a;
+    --viz-fuel:  #eb6834;
+    --viz-mind:  #814a8d;
   }
     :root[data-theme="dark"] {
       --bg: #0e1a22;
@@ -52,6 +62,11 @@
       --brand-navy: #16242e;
       --brand-navy-soft: #1d2f3a;
       --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+      /* Re-stepped for the dark surface, not an automatic flip. */
+      --viz-sleep: #3987e5;
+      --viz-body:  #199e70;
+      --viz-fuel:  #d95926;
+      --viz-mind:  #814a8d;
     }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -1270,8 +1285,25 @@
   .bi-delta.bad { background: #fee2e2; color: #991b1b; }
   [data-theme="dark"] .bi-delta.good { background: #14532d; color: #bbf7d0; }
   [data-theme="dark"] .bi-delta.bad { background: #7f1d1d; color: #fecaca; }
+  /* Lead band: the one thing the page should say before any chart is read. */
+  .bi-lead { margin: 0 0 24px; padding: 18px 20px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+  .bi-lead-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .bi-lead-head h3 { margin: 0; font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  .bi-lead-head span { color: var(--muted); font-size: 11px; }
+  .bi-lead-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+  .bi-mover { display: flex; flex-direction: column; gap: 7px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; }
+  .bi-mover-name { display: flex; align-items: center; gap: 7px; color: var(--text); font-size: 11.5px; font-weight: 650; }
+  .bi-mover-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+  .bi-mover-value { font-size: 23px; font-weight: 650; line-height: 1; letter-spacing: -.02em; }
+  .bi-mover-value small { margin-left: 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
+  .bi-mover-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bi-mover-base { color: var(--muted); font-size: 10px; line-height: 1.4; }
+  .bi-spark { display: block; width: 100%; height: 30px; margin-top: 1px; }
+  .bi-lead-empty { color: var(--muted); font-size: 12px; }
+  .bi-lead-note { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--border); color: var(--muted); font-size: 10.5px; }
+  @media (max-width: 900px) { .bi-lead-grid { grid-template-columns: 1fr; } }
   .bi-insight-row {
-    display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1px;
+    display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1px;
     margin: 0 0 24px; overflow: hidden; border: 1px solid var(--border);
     border-radius: 12px; background: var(--border);
   }
@@ -1298,10 +1330,17 @@
   .bi-chart-current { text-align: right; color: var(--text); font-size: 18px; font-weight: 650; line-height: 1; }
   .bi-chart-current small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; font-weight: 500; }
   .bi-trend-chart { display: block; width: 100%; height: auto; min-height: 154px; overflow: visible; }
-  .bi-grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
+  .bi-grid-line { stroke: var(--border); stroke-width: 1; }
   .bi-axis-label { fill: var(--muted); font: 9px var(--sans); }
   .bi-trend-area { opacity: .09; }
   .bi-trend-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  /* Bridges an unlogged stretch: deliberately not the solid line, so a gap in
+     the record never reads as a measured trend. */
+  .bi-trend-gap { fill: none; stroke-width: 1.5; stroke-dasharray: 2 4; opacity: .32; stroke-linecap: round; }
+  .bi-baseline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .5; }
+  .bi-baseline-label { fill: var(--muted); font: 8.5px var(--sans); letter-spacing: .02em; }
+  .bi-chart-coverage { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
+  .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
   .bi-trend-dot { stroke: var(--panel); stroke-width: 2; }
   .bi-chart-hit { fill: transparent; cursor: crosshair; }
   .bi-quarter-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
@@ -3960,6 +3999,12 @@
       });
     }
 
+    function medianOf(data, key) {
+      const v = data.map(e => e[key]).filter(n => n != null).sort((a,b) => a-b);
+      if (!v.length) return null;
+      return v.length % 2 ? v[(v.length-1)/2] : (v[v.length/2-1] + v[v.length/2]) / 2;
+    }
+
     function trimEmptyEdges(data, key) {
       const first = data.findIndex(e => e[key] != null);
       if (first < 0) return [];
@@ -3972,9 +4017,11 @@
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
-      const vals = points.map(p => p.v), rawMin = Math.min(...vals), rawMax = Math.max(...vals);
-      const padding = zeroBase ? Math.max(rawMax * .08, 1) : Math.max((rawMax - rawMin) * .18, Math.abs(rawMax) * .02, 1);
-      const min = zeroBase ? 0 : Math.max(0, rawMin - padding), max = rawMax + padding;
+      // Bars always start at zero: their length *is* the value, so a truncated
+      // axis would overstate the difference between quarters. (Lines may sit on
+      // a zoomed axis — position, not length, carries their meaning.)
+      const vals = points.map(p => p.v), rawMax = Math.max(...vals), rawMin = Math.min(0, ...vals);
+      const min = rawMin, max = rawMax + Math.max((rawMax - rawMin) * .08, 1);
       const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
       const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, slot * .62);
       const y = v => T + (1 - (v-min)/range) * (H-T-B);
@@ -3982,13 +4029,18 @@
         const gy = T + frac*(H-T-B), gv = max-frac*range;
         return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line><text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
       }).join('');
+      // Anchor every bar to the zero line, so a negative quarter (a calorie
+      // surplus, say) grows downward instead of being drawn as a positive bar.
+      const yZero = y(0);
+      const zeroRule = rawMin < 0 ? `<line class="bi-grid-line" x1="${L}" y1="${yZero.toFixed(1)}" x2="${W-R}" y2="${yZero.toFixed(1)}"></line>` : '';
       const bars = points.map(p => {
-        const cx = L + (p.i+.5)*slot, top = y(p.v), height = Math.max(2,H-B-top);
+        const cx = L + (p.i+.5)*slot, vy = y(p.v);
+        const top = Math.min(vy, yZero), height = Math.max(2, Math.abs(vy - yZero));
         const tooltip = escapeHtml(`${p.label}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<rect class="bi-quarter-bar" x="${cx-barW/2}" y="${top}" width="${barW}" height="${height}" rx="4" fill="${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
+        return `<rect class="bi-quarter-bar" x="${cx-barW/2}" y="${top.toFixed(1)}" width="${barW}" height="${height.toFixed(1)}" rx="4" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
       }).join('');
       const labels = data.map((e,i) => i%2===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
-      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${bars}${labels}</svg>`;
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${zeroRule}${bars}${labels}</svg>`;
     }
 
     function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '') {
@@ -3998,33 +4050,65 @@
       if (points.length < 2) return `<div class="bi-empty-chart">Not enough data to chart yet</div>`;
       const vals = points.map(p => p.v);
       const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
-      const padding = zeroBase ? Math.max(rawMax * .08, 1) : Math.max((rawMax - rawMin) * .22, Math.abs(rawMax) * .025, 1);
-      const min = zeroBase ? 0 : Math.max(0, rawMin - padding);
+      const padding = zeroBase ? Math.max((rawMax - Math.min(0, rawMin)) * .08, 1) : Math.max((rawMax - rawMin) * .22, Math.abs(rawMax) * .025, 1);
+      // Zero-basing must still make room for genuinely negative readings — a
+      // calorie surplus is a real value, not something to clip off the plot.
+      const min = zeroBase ? Math.min(0, rawMin - padding) : Math.max(0, rawMin - padding);
       const max = rawMax + padding;
       const range = Math.max(.001, max - min);
       const W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
       const x = i => L + (i / Math.max(1, data.length - 1)) * (W - L - R);
       const y = v => T + (1 - (v - min) / range) * (H - T - B);
-      const pathPoints = points.map(p => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`);
-      const line = `M ${pathPoints.join(' L ')}`;
-      const area = `${line} L ${x(points.at(-1).i).toFixed(1)},${H-B} L ${x(points[0].i).toFixed(1)},${H-B} Z`;
+      // Split into runs of consecutive logged periods. Drawing one path through
+      // every point would bridge unlogged stretches as if they were measured —
+      // a three-month gap in the food log reads as a smooth climb otherwise.
+      const segments = points.reduce((acc, p) => {
+        const last = acc.at(-1);
+        if (last && p.i === last.at(-1).i + 1) last.push(p); else acc.push([p]);
+        return acc;
+      }, []);
+      const at = p => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`;
+      const line = segments.filter(s => s.length > 1)
+        .map(s => `<path class="bi-trend-line" d="M ${s.map(at).join(' L ')}" style="stroke:${color}"></path>`).join('');
+      // Only fill under an unbroken run. Filling each fragment separately puts a
+      // vertical cliff at every gap edge, which reads as a plunge to zero.
+      const area = segments.length > 1 ? '' : segments.filter(s => s.length > 1)
+        .map(s => `<path class="bi-trend-area" d="M ${s.map(at).join(' L ')} L ${x(s.at(-1).i).toFixed(1)},${H-B} L ${x(s[0].i).toFixed(1)},${H-B} Z" fill="url(#grad-${key}-${_biPeriod})"></path>`).join('');
+      const gaps = segments.slice(1).map((s, idx) => {
+        const from = segments[idx].at(-1), missing = s[0].i - from.i - 1;
+        const label = escapeHtml(`${missing} ${_biPeriod}${missing === 1 ? '' : 's'} not logged|No data between ${from.label} and ${s[0].label}`);
+        return `<path class="bi-trend-gap" d="M ${at(from)} L ${at(s[0])}" style="stroke:${color}"></path>
+          <line class="bi-chart-hit" x1="${x(from.i)}" y1="${y(from.v)}" x2="${x(s[0].i)}" y2="${y(s[0].v)}" stroke="transparent" stroke-width="16" data-tooltip="${label}"></line>`;
+      }).join('');
       const grid = [0,.5,1].map(frac => {
         const gy = T + frac * (H-T-B);
         const gv = max - frac * range;
         return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line>
           <text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
       }).join('');
+      // Where the scale crosses zero, mark it — the sign of a calorie deficit is
+      // the whole story, and it is invisible against an arbitrary gridline.
+      const zeroRule = min < 0 && max > 0
+        ? `<line class="bi-grid-line" x1="${L}" y1="${y(0).toFixed(1)}" x2="${W-R}" y2="${y(0).toFixed(1)}" stroke-opacity=".85"></line>
+           <text class="bi-axis-label" x="${L-7}" y="${(y(0)+3).toFixed(1)}" text-anchor="end">0</text>` : '';
+      // A reference line turns "here is a squiggle" into "here is where you sit
+      // versus normal". Median, so one freak period does not move the baseline.
+      // The value is named in the card header — anywhere inside a 640×190 plot
+      // it collides with the line it is meant to be read against.
+      const median = medianOf(data, key);
+      const by = y(median);
+      const baseline = points.length < 4 ? ''
+        : `<line class="bi-baseline" x1="${L}" y1="${by.toFixed(1)}" x2="${W-R}" y2="${by.toFixed(1)}"></line>`;
       const labelIndexes = [...new Set([0, Math.floor((data.length-1)/2), data.length-1])];
       const labels = labelIndexes.map(i => `<text class="bi-axis-label" x="${x(i)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}">${escapeHtml(getLabel(data[i]))}</text>`).join('');
       const dots = points.map((p, idx) => {
         const periodLabel = _biPeriod === 'week' ? `Week of ${p.label}` : p.label;
         const tooltip = escapeHtml(`${periodLabel}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<circle class="bi-trend-dot" cx="${x(p.i)}" cy="${y(p.v)}" r="${idx===points.length-1?4:2.5}" fill="${color}"></circle><circle class="bi-chart-hit" cx="${x(p.i)}" cy="${y(p.v)}" r="10" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></circle>`;
+        return `<circle class="bi-trend-dot" cx="${x(p.i)}" cy="${y(p.v)}" r="${idx===points.length-1?4:2.5}" style="fill:${color}"></circle><circle class="bi-chart-hit" cx="${x(p.i)}" cy="${y(p.v)}" r="10" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></circle>`;
       }).join('');
       return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} trend">
-        <defs><linearGradient id="grad-${key}-${_biPeriod}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".9"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
-        ${grid}<path class="bi-trend-area" d="${area}" fill="url(#grad-${key}-${_biPeriod})"></path>
-        <path class="bi-trend-line" d="${line}" stroke="${color}"></path>${dots}${labels}
+        <defs><linearGradient id="grad-${key}-${_biPeriod}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${color}" stop-opacity=".9"/><stop offset="1" style="stop-color:${color}" stop-opacity="0"/></linearGradient></defs>
+        ${grid}${zeroRule}${baseline}${area}${gaps}${line}${dots}${labels}
       </svg>`;
     }
 
@@ -4111,14 +4195,79 @@
       const chartBody = !apiHasField
         ? `<div class="bi-empty-chart">This metric has not been synced yet</div>`
         : makeTrendChart(periodData, key, color, fmt, zeroBase, unit);
+      // State how much of the window was actually logged. A sparse metric and a
+      // complete one look identical once the line is drawn, and the headline
+      // figure is the last *logged* period, which may be months stale.
+      const span = trimEmptyEdges(periodData, key);
+      const logged = span.filter(e => e[key] != null).length;
+      const unitWord = _biPeriod === 'week' ? 'week' : _biPeriod === 'month' ? 'month' : 'quarter';
+      const median = medianOf(span, key);
+      const medianNote = logged >= 4 && median != null && _biPeriod !== 'quarter'
+        ? ` · median ${fmt(median)}${unit ? ` ${unit}` : ''}` : '';
+      const coverage = !apiHasField || !logged ? ''
+        : logged === periodData.length
+          ? `<div class="bi-chart-coverage">All ${periodData.length} ${unitWord}s logged${medianNote}</div>`
+          : `<div class="bi-chart-coverage">${logged} of ${periodData.length} ${unitWord}s logged${medianNote}</div>`;
+      const asOf = latest && latest !== periodData.at(-1)
+        ? `<small class="bi-asof">${unit ? `${unit} · ` : ''}as of ${getLabel(latest)}</small>`
+        : unit ? `<small>${unit}</small>` : '';
       return `<article class="bi-chart-card">
         <div class="bi-chart-head">
-          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div></div>
-          <div class="bi-chart-current">${latest ? fmt(latest[key]) : '—'}${unit ? `<small>${unit}</small>` : ''}</div>
+          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div>${coverage}</div>
+          <div class="bi-chart-current">${latest ? fmt(latest[key]) : '—'}${asOf}</div>
         </div>
         ${chartBody}
       </article>`;
     };
+
+    // === Lead band: what actually moved ===
+    // Sixteen charts of equal weight say nothing on their own. Rank every metric
+    // by how far its latest reading sits from its own recent median and let the
+    // top three lead the page; the grid below is then detail, not a hunt.
+    const MOVER_METRICS = [
+      {key:'slp_score',     label:'Sleep score',   fmt:fmtInt, unit:'',     inverse:false, hue:'sleep'},
+      {key:'slp_hrs',       label:'Sleep duration',fmt:fmt1,   unit:'hrs',  inverse:false, hue:'sleep'},
+      {key:'slp_hrv',       label:'HRV',           fmt:fmtInt, unit:'ms',   inverse:false, hue:'sleep'},
+      {key:'rhr',           label:'Resting HR',    fmt:fmtInt, unit:'bpm',  inverse:true,  hue:'sleep'},
+      {key:'training_hrs',  label:'Training',      fmt:fmt1,   unit:'hrs',  inverse:false, hue:'body'},
+      {key:'intensity_mins',label:'Intensity',     fmt:fmtInt, unit:'min',  inverse:false, hue:'body'},
+      {key:'weekly_weight', label:'Weight',        fmt:fmt1,   unit:'lbs',  inverse:true,  hue:'body'},
+      {key:'consumed_cals', label:'Calories',      fmt:fmtInt, unit:'kcal', inverse:false, hue:'fuel'},
+      {key:'avg_protein',   label:'Protein',       fmt:fmtInt, unit:'g',    inverse:false, hue:'fuel'},
+      {key:'stress',        label:'Stress',        fmt:fmtInt, unit:'',     inverse:true,  hue:'mind'},
+      {key:'articles',      label:'Articles',      fmt:fmtInt, unit:'',     inverse:false, hue:'mind'},
+    ];
+    // Gap-aware, like the full charts: a break in logging is drawn as a break.
+    const sparkline = (key, color) => {
+      const win = entries.slice(-14);
+      const pts = win.map((e, i) => ({ v: e[key], i })).filter(p => p.v != null);
+      if (pts.length < 3) return '';
+      const vals = pts.map(p => p.v), mn = Math.min(...vals), mx = Math.max(...vals);
+      const rg = Math.max(.001, mx - mn), W = 150, H = 30, P = 4;
+      const px = i => P + (i / Math.max(1, win.length - 1)) * (W - 2*P);
+      const py = v => P + (1 - (v - mn) / rg) * (H - 2*P);
+      const runs = pts.reduce((acc, p) => {
+        const last = acc.at(-1);
+        if (last && p.i === last.at(-1).i + 1) last.push(p); else acc.push([p]);
+        return acc;
+      }, []);
+      const path = runs.filter(r => r.length > 1)
+        .map(r => `<path d="M ${r.map(p => `${px(p.i).toFixed(1)},${py(p.v).toFixed(1)}`).join(' L ')}" fill="none" style="stroke:${color}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+      const tip = pts.at(-1);
+      return `<svg class="bi-spark" viewBox="0 0 ${W} ${H}" aria-hidden="true">${path}<circle cx="${px(tip.i).toFixed(1)}" cy="${py(tip.v).toFixed(1)}" r="2.4" style="fill:${color}"/></svg>`;
+    };
+    const movers = MOVER_METRICS.map(m => {
+      const logged = entries.filter(e => e[m.key] != null);
+      if (logged.length < 5) return null;
+      const latest = logged.at(-1);
+      const baseline = medianOf(logged.slice(-9, -1), m.key);
+      if (baseline == null || Math.abs(baseline) < .001) return null;
+      const pct = (latest[m.key] - baseline) / Math.abs(baseline) * 100;
+      return { ...m, latest, value: latest[m.key], baseline, pct };
+    }).filter(Boolean)
+      .filter(m => Math.abs(m.pct) >= 5)
+      .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+      .slice(0, 3);
 
     const pctChange = (current, baseline) => baseline ? Math.round(((current - baseline) / Math.abs(baseline)) * 100) : null;
     const loggedSleep = entries.filter(e => e.slp_score != null);
@@ -4126,11 +4275,16 @@
     const recentSleepAvg = avgOf(recent8, 'slp_score');
     const priorSleepAvg = avgOf(prior8, 'slp_score');
     const sleepMove = pctChange(recentSleepAvg, priorSleepAvg);
+    // Same 8-vs-prior-8 shape as the sleep trajectory. An earlier version
+    // compared the latest week against a 4-week *mean*, which one 12-hour week
+    // dragged so far up that this line read "59% lower" while the lead band —
+    // measuring the same week against its median — read "103% above usual".
+    // Two defensible baselines, one flatly contradictory page.
     const loggedTraining = entries.filter(e => e.training_hrs != null);
-    const currentTraining = loggedTraining.at(-1);
-    const priorTraining4 = loggedTraining.slice(-5, -1);
-    const trainingAvg4 = avgOf(priorTraining4, 'training_hrs');
-    const trainingMove = currentTraining && trainingAvg4 ? pctChange(currentTraining.training_hrs, trainingAvg4) : null;
+    const recentTraining8 = loggedTraining.slice(-8), priorTraining8 = loggedTraining.slice(-16, -8);
+    const recentTrainingAvg = avgOf(recentTraining8, 'training_hrs');
+    const priorTrainingAvg = avgOf(priorTraining8, 'training_hrs');
+    const trainingMove = pctChange(recentTrainingAvg, priorTrainingAvg);
     const loggedFields = ['slp_score','slp_hrs','slp_hrv','rhr','training_hrs','stress','weekly_weight','articles'];
     const latestRow = currentWeek;
     const completenessCount = loggedFields.filter(k => latestRow[k] != null).length;
@@ -4151,23 +4305,45 @@
           </div>
         </div>
 
+        <div class="bi-lead">
+          <div class="bi-lead-head">
+            <h3>What moved</h3>
+            <span>Largest gaps between the latest reading and its own 8-reading median</span>
+          </div>
+          ${movers.length ? `<div class="bi-lead-grid">${movers.map(m => {
+            const good = m.inverse ? m.pct < 0 : m.pct > 0;
+            const dir = m.pct > 0 ? '↑' : '↓';
+            const word = m.pct > 0 ? 'above' : 'below';
+            const color = `var(--viz-${m.hue})`;
+            return `<div class="bi-mover">
+              <div class="bi-mover-name"><span class="bi-mover-dot" style="background:${color}"></span>${m.label}</div>
+              <div class="bi-mover-value">${m.fmt(m.value)}${m.unit ? `<small>${m.unit}</small>` : ''}</div>
+              <div class="bi-mover-foot">
+                <span class="bi-delta ${good ? 'good' : 'bad'}">${dir} ${Math.abs(Math.round(m.pct))}% ${word} usual</span>
+              </div>
+              <div class="bi-mover-base">Median ${m.fmt(m.baseline)}${m.unit ? ` ${m.unit}` : ''} · week of ${wkLbl(m.latest)}</div>
+              ${sparkline(m.key, color)}
+            </div>`;
+          }).join('')}</div>` : `<div class="bi-lead-empty">Nothing sits more than 5% off its usual range — a steady stretch.</div>`}
+          <div class="bi-lead-note">${completenessCount} of ${loggedFields.length} core fields logged for week of ${entries.at(-1) ? wkLbl(latestRow) : '—'} (${completeness}%).</div>
+        </div>
+
         <div class="bi-summary-grid">
-          ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:avgSlp8!=null?`${fmtInt(avgSlp8)} eight-week average`:'No history yet', color:'#6366f1'})}
-          ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:avgSlpHrs8!=null?`${fmt1(avgSlpHrs8)} hours eight-week average`:'No history yet', color:'#818cf8'})}
-          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'#4f46e5', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
-          ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'#0ea5e9'})}
-          ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'#f43f5e', inverse:true})}
-          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:latestFit?``:'No history yet', color:'#10b981'})}
-          ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'#f59e0b', inverse:true})}
-          ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'#8b5cf6', inverse:true, suffix:' lb'})}
-          ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'#f97316'})}
-          ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'#ec4899'})}
+          ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:avgSlp8!=null?`${fmtInt(avgSlp8)} eight-week average`:'No history yet', color:'var(--viz-sleep)'})}
+          ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:avgSlpHrs8!=null?`${fmt1(avgSlpHrs8)} hours eight-week average`:'No history yet', color:'var(--viz-sleep)'})}
+          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'var(--viz-sleep)', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
+          ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'var(--viz-sleep)'})}
+          ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'var(--viz-sleep)', inverse:true})}
+          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:recentTrainingAvg!=null?`${fmt1(recentTrainingAvg)} hours eight-week average`:'No history yet', color:'var(--viz-body)'})}
+          ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
+          ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
+          ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
+          ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'var(--viz-mind)'})}
         </div>
 
         <div class="bi-insight-row">
           <div class="bi-insight"><div class="bi-insight-icon">◒</div><div><strong>Sleep trajectory</strong><span>${sleepMove == null ? 'Needs eight recent and eight prior logged sleep scores.' : `${fmtInt(recentSleepAvg)} average sleep score over the latest 8 logged weeks vs ${fmtInt(priorSleepAvg)} over the prior 8 (${Math.abs(sleepMove)}% ${sleepMove>=0?'higher':'lower'}).`}</span></div></div>
-          <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Training load</strong><span>${trainingMove == null ? 'Needs a current training week and prior logged weeks.' : `${fmt1(currentTraining.training_hrs)} hours in week of ${wkLbl(currentTraining)} vs ${fmt1(trainingAvg4)} average across the prior ${priorTraining4.length} logged weeks (${Math.abs(trainingMove)}% ${trainingMove>=0?'higher':'lower'}).`}</span></div></div>
-          <div class="bi-insight"><div class="bi-insight-icon">✓</div><div><strong>Journal coverage</strong><span>${completenessCount} of ${loggedFields.length} core fields present for week of ${entries.at(-1)?wkLbl(latestRow):'—'} (${completeness}%): sleep score, duration, HRV, resting HR, training, stress, weight, and articles.</span></div></div>
+          <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Training load</strong><span>${trainingMove == null ? 'Needs eight recent and eight prior logged training weeks.' : `${fmt1(recentTrainingAvg)} hours per week across the latest 8 logged weeks vs ${fmt1(priorTrainingAvg)} over the prior 8 (${Math.abs(trainingMove)}% ${trainingMove>=0?'higher':'lower'}).`}</span></div></div>
         </div>
 
         <div class="bi-period-row">
@@ -4177,34 +4353,34 @@
 
         <div class="bi-section-heading"><h3>Sleep &amp; recovery</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
         <div class="bi-grid">
-          ${chartCard('Sleep score', 'Overall sleep quality', 'slp_score', '#6366f1', v=>Math.round(v), false, 'score')}
-          ${chartCard('Sleep duration', 'Average hours per night', 'slp_hrs', '#818cf8', v=>(+v).toFixed(1), false, 'hours')}
-          ${chartCard('Heart-rate variability', 'Higher generally signals recovery', 'slp_hrv', '#0ea5e9', v=>Math.round(v), false, 'ms')}
-          ${chartCard('Resting heart rate', 'Lower can indicate better recovery', 'rhr', '#f43f5e', v=>Math.round(v), false, 'bpm')}
+          ${chartCard('Sleep score', 'Overall sleep quality', 'slp_score', 'var(--viz-sleep)', v=>Math.round(v), false, 'score')}
+          ${chartCard('Sleep duration', 'Average hours per night', 'slp_hrs', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'hours')}
+          ${chartCard('Heart-rate variability', 'Higher generally signals recovery', 'slp_hrv', 'var(--viz-sleep)', v=>Math.round(v), false, 'ms')}
+          ${chartCard('Resting heart rate', 'Lower can indicate better recovery', 'rhr', 'var(--viz-sleep)', v=>Math.round(v), false, 'bpm')}
         </div>
 
         <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
         <div class="bi-grid">
-          ${chartCard(`${isAgg?'Total ':''}training time`, 'Logged endurance and strength work', 'training_hrs', '#10b981', v=>(+v).toFixed(1), true, 'hours')}
-          ${chartCard(`${isAgg?'Total ':''}intensity`, 'Moderate and vigorous minutes', 'intensity_mins', '#22c55e', v=>Math.round(v), true, 'minutes')}
-          ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', '#8b5cf6', v=>(+v).toFixed(1), false, 'lbs')}
-          ${chartCard('Body fat', 'Composition trend', 'body_fat', '#a78bfa', v=>(+v).toFixed(1), false, 'percent')}
+          ${chartCard(`${isAgg?'Total ':''}training time`, 'Logged endurance and strength work', 'training_hrs', 'var(--viz-body)', v=>(+v).toFixed(1), true, 'hours')}
+          ${chartCard(`${isAgg?'Total ':''}intensity`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
+          ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'lbs')}
+          ${chartCard('Body fat', 'Composition trend', 'body_fat', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'percent')}
         </div>
 
         <div class="bi-section-heading"><h3>Nutrition &amp; food log</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
         <div class="bi-grid">
-          ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', '#f97316', v=>Math.round(v), true, 'kcal')}
-          ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', '#ef4444', v=>Math.round(v), false, 'kcal')}
-          ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', '#14b8a6', v=>Math.round(v), true, 'grams')}
-          ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', '#eab308', v=>Math.round(v), true, 'kcal')}
+          ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
+          ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
+          ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
+          ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
         </div>
 
         <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
         <div class="bi-grid">
-          ${chartCard('Stress', 'Lower is better', 'stress', '#f59e0b', v=>Math.round(v), false, 'score')}
-          ${chartCard(`${isAgg?'Total ':''}meditation`, 'Sessions completed', 'meditation', '#d946ef', v=>Math.round(v), true, 'sessions')}
-          ${chartCard(`${isAgg?'Total ':''}articles`, 'Written learning output', 'articles', '#ec4899', v=>Math.round(v), true, 'articles')}
-          ${chartCard(`${isAgg?'Total ':''}podcasts & videos`, 'Audio and video learning', 'podcasts', '#f472b6', v=>Math.round(v), true, 'items')}
+          ${chartCard('Stress', 'Lower is better', 'stress', 'var(--viz-mind)', v=>Math.round(v), false, 'score')}
+          ${chartCard(`${isAgg?'Total ':''}meditation`, 'Sessions completed', 'meditation', 'var(--viz-mind)', v=>Math.round(v), true, 'sessions')}
+          ${chartCard(`${isAgg?'Total ':''}articles`, 'Written learning output', 'articles', 'var(--viz-mind)', v=>Math.round(v), true, 'articles')}
+          ${chartCard(`${isAgg?'Total ':''}podcasts & videos`, 'Audio and video learning', 'podcasts', 'var(--viz-mind)', v=>Math.round(v), true, 'items')}
           </div>
           <div class="bi-tooltip" role="tooltip"><strong></strong><span></span></div>
         </div>
