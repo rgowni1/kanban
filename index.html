@@ -1338,6 +1338,9 @@
      the record never reads as a measured trend. */
   .bi-trend-gap { fill: none; stroke-width: 1.5; stroke-dasharray: 2 4; opacity: .32; stroke-linecap: round; }
   .bi-baseline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .5; }
+  /* A goal line, not a description of the data — longer dashes and full ink so
+     it never reads as the median. Only one of the two is ever drawn. */
+  .bi-target { stroke: var(--text); stroke-width: 1.25; stroke-dasharray: 7 4; opacity: .55; }
   .bi-baseline-label { fill: var(--muted); font: 8.5px var(--sans); letter-spacing: .02em; }
   .bi-chart-coverage { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
   .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
@@ -3919,6 +3922,7 @@
   let _journalData = null;
   let _journalFetch = null;
   let _biPeriod = 'week';
+  const STRENGTH_TARGET = 120; // minutes of strength work per week
 
   function fetchJournal() {
     if (_journalData) return Promise.resolve(_journalData);
@@ -3989,6 +3993,10 @@
           slp_hrv:   avgOf(rows, 'slp_hrv'),   rhr:      avgOf(rows, 'rhr'),
           training_hrs:   sumOf(rows, 'training_hrs'),
           intensity_mins: sumOf(rows, 'intensity_mins'),
+          // Averaged, not summed, unlike its neighbours: the 120-minute goal is
+          // per week, so a rolled-up period has to stay on that same scale for
+          // the target line to mean anything.
+          strength_mins:  avgOf(rows, 'strength_mins'),
           run_miles:  sumOf(rows, 'run_miles'), bike_miles: sumOf(rows, 'bike_miles'),
           weekly_weight: avgOf(rows, 'weekly_weight'), body_fat: avgOf(rows, 'body_fat'),
           stress:     avgOf(rows, 'stress'),    meditation: sumOf(rows, 'meditation'),
@@ -4013,14 +4021,14 @@
       return data.slice(first, last + 1);
     }
 
-    function makeQuarterChart(data, key, color, valFmt, zeroBase = false, unit = '') {
+    function makeQuarterChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
       // Bars always start at zero: their length *is* the value, so a truncated
       // axis would overstate the difference between quarters. (Lines may sit on
       // a zoomed axis — position, not length, carries their meaning.)
-      const vals = points.map(p => p.v), rawMax = Math.max(...vals), rawMin = Math.min(0, ...vals);
+      const vals = points.map(p => p.v), rawMax = Math.max(...vals, target ?? -Infinity), rawMin = Math.min(0, ...vals);
       const min = rawMin, max = rawMax + Math.max((rawMax - rawMin) * .08, 1);
       const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
       const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, slot * .62);
@@ -4033,6 +4041,8 @@
       // surplus, say) grows downward instead of being drawn as a positive bar.
       const yZero = y(0);
       const zeroRule = rawMin < 0 ? `<line class="bi-grid-line" x1="${L}" y1="${yZero.toFixed(1)}" x2="${W-R}" y2="${yZero.toFixed(1)}"></line>` : '';
+      const targetRule = target != null && target >= min && target <= max
+        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>` : '';
       const bars = points.map(p => {
         const cx = L + (p.i+.5)*slot, vy = y(p.v);
         const top = Math.min(vy, yZero), height = Math.max(2, Math.abs(vy - yZero));
@@ -4040,20 +4050,24 @@
         return `<rect class="bi-quarter-bar" x="${cx-barW/2}" y="${top.toFixed(1)}" width="${barW}" height="${height.toFixed(1)}" rx="4" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
       }).join('');
       const labels = data.map((e,i) => i%2===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
-      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${zeroRule}${bars}${labels}</svg>`;
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${zeroRule}${targetRule}${bars}${labels}</svg>`;
     }
 
-    function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '') {
-      if (_biPeriod === 'quarter') return makeQuarterChart(data, key, color, valFmt, zeroBase, unit);
+    function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
+      if (_biPeriod === 'quarter') return makeQuarterChart(data, key, color, valFmt, zeroBase, unit, target);
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (points.length < 2) return `<div class="bi-empty-chart">Not enough data to chart yet</div>`;
       const vals = points.map(p => p.v);
-      const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
+      // The scale has to reach the target, or a goal you are short of sits off
+      // the top of the plot — exactly the weeks where seeing it matters.
+      const rawMin = Math.min(...vals, target ?? Infinity), rawMax = Math.max(...vals, target ?? -Infinity);
       const padding = zeroBase ? Math.max((rawMax - Math.min(0, rawMin)) * .08, 1) : Math.max((rawMax - rawMin) * .22, Math.abs(rawMax) * .025, 1);
       // Zero-basing must still make room for genuinely negative readings — a
-      // calorie surplus is a real value, not something to clip off the plot.
-      const min = zeroBase ? Math.min(0, rawMin - padding) : Math.max(0, rawMin - padding);
+      // calorie surplus is a real value, not something to clip off the plot —
+      // but only when they exist. Padding below an all-positive series would
+      // print an impossible floor like "-10 minutes" on the axis.
+      const min = zeroBase ? (rawMin < 0 ? rawMin - padding : 0) : Math.max(0, rawMin - padding);
       const max = rawMax + padding;
       const range = Math.max(.001, max - min);
       const W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
@@ -4095,9 +4109,13 @@
       // versus normal". Median, so one freak period does not move the baseline.
       // The value is named in the card header — anywhere inside a 640×190 plot
       // it collides with the line it is meant to be read against.
+      // A target supersedes the median: two dashed rules in one plot is a riddle,
+      // and when there is a goal the goal is the reference that matters.
       const median = medianOf(data, key);
       const by = y(median);
-      const baseline = points.length < 4 ? ''
+      const baseline = target != null && target >= min && target <= max
+        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>`
+        : points.length < 4 ? ''
         : `<line class="bi-baseline" x1="${L}" y1="${by.toFixed(1)}" x2="${W-R}" y2="${by.toFixed(1)}"></line>`;
       const labelIndexes = [...new Set([0, Math.floor((data.length-1)/2), data.length-1])];
       const labels = labelIndexes.map(i => `<text class="bi-axis-label" x="${x(i)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}">${escapeHtml(getLabel(data[i]))}</text>`).join('');
@@ -4156,6 +4174,7 @@
       slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
       slp_hrv:'oura.py → Notion', rhr:'oura.py → Notion',
       training_hrs:'Garmin computer-use → Notion', intensity_mins:'Garmin computer-use → Notion', weekly_weight:'Garmin computer-use → Notion',
+      strength_mins:'Garmin computer-use → Notion',
       body_fat:'Garmin computer-use → Notion', stress:'Garmin computer-use → Notion', meditation:'Garmin computer-use → Notion',
       garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
       avg_protein:'Notion food log', calorie_deficit:'Notion formula',
@@ -4189,12 +4208,12 @@
         <div class="bi-summary-source">Source · ${sourceFor(key)}</div>
       </div>`;
 
-    const chartCard = (label, note, key, color, fmt, zeroBase, unit='') => {
+    const chartCard = (label, note, key, color, fmt, zeroBase, unit='', target=null) => {
       const latest = [...periodData].reverse().find(e => e[key] != null);
       const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
       const chartBody = !apiHasField
         ? `<div class="bi-empty-chart">This metric has not been synced yet</div>`
-        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit);
+        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit, target);
       // State how much of the window was actually logged. A sparse metric and a
       // complete one look identical once the line is drawn, and the headline
       // figure is the last *logged* period, which may be months stale.
@@ -4202,8 +4221,13 @@
       const logged = span.filter(e => e[key] != null).length;
       const unitWord = _biPeriod === 'week' ? 'week' : _biPeriod === 'month' ? 'month' : 'quarter';
       const median = medianOf(span, key);
-      const medianNote = logged >= 4 && median != null && _biPeriod !== 'quarter'
-        ? ` · median ${fmt(median)}${unit ? ` ${unit}` : ''}` : '';
+      // Against a goal, the count of periods that cleared it says more than any
+      // average — 106 and 104 are a near miss twice, not "roughly on target".
+      const hits = target == null ? null : span.filter(e => e[key] != null && e[key] >= target).length;
+      const medianNote = target != null && logged
+        ? ` · target ${fmt(target)}${unit ? ` ${unit}` : ''} · hit ${hits} of ${logged}`
+        : logged >= 4 && median != null && _biPeriod !== 'quarter'
+          ? ` · median ${fmt(median)}${unit ? ` ${unit}` : ''}` : '';
       const coverage = !apiHasField || !logged ? ''
         : logged === periodData.length
           ? `<div class="bi-chart-coverage">All ${periodData.length} ${unitWord}s logged${medianNote}</div>`
@@ -4231,6 +4255,7 @@
       {key:'rhr',           label:'Resting HR',    fmt:fmtInt, unit:'bpm',  inverse:true,  hue:'sleep'},
       {key:'training_hrs',  label:'Training',      fmt:fmt1,   unit:'hrs',  inverse:false, hue:'body'},
       {key:'intensity_mins',label:'Intensity',     fmt:fmtInt, unit:'min',  inverse:false, hue:'body'},
+      {key:'strength_mins', label:'Strength',      fmt:fmtInt, unit:'min',  inverse:false, hue:'body'},
       {key:'weekly_weight', label:'Weight',        fmt:fmt1,   unit:'lbs',  inverse:true,  hue:'body'},
       {key:'consumed_cals', label:'Calories',      fmt:fmtInt, unit:'kcal', inverse:false, hue:'fuel'},
       {key:'avg_protein',   label:'Protein',       fmt:fmtInt, unit:'g',    inverse:false, hue:'fuel'},
@@ -4363,6 +4388,7 @@
         <div class="bi-grid">
           ${chartCard(`${isAgg?'Total ':''}training time`, 'Logged endurance and strength work', 'training_hrs', 'var(--viz-body)', v=>(+v).toFixed(1), true, 'hours')}
           ${chartCard(`${isAgg?'Total ':''}intensity`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
+          ${chartCard('Strength training', `Minutes per week${isAgg?', averaged within each period':''} · goal ${STRENGTH_TARGET}`, 'strength_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes', STRENGTH_TARGET)}
           ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'lbs')}
           ${chartCard('Body fat', 'Composition trend', 'body_fat', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'percent')}
         </div>
