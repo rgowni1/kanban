@@ -1005,6 +1005,27 @@
     border-radius: 10px; padding: 9px 12px; outline: none; margin-bottom: 14px;
   }
   .focus-add-input:focus { border-color: var(--accent); }
+  /* Focus capacity meter */
+  .fcap { display: flex; flex-direction: column; gap: 5px; margin: 2px 0 10px; }
+  .fcap-row { display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 9px; font-size: 11px; }
+  .fcap-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fcap-bar { position: relative; height: 5px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+  .fcap-bar-none { background: repeating-linear-gradient(90deg, var(--panel-2) 0 5px, transparent 5px 9px); }
+  .fcap-fill { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width .18s ease; }
+  .fcap-row.full .fcap-fill { background: #f59e0b; }
+  .fcap-row.over .fcap-fill { background: var(--danger); }
+  .fcap-val { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .fcap-val small { color: var(--muted); font-weight: 500; font-size: 9.5px; }
+  .fcap-row.over .fcap-val { color: var(--danger); }
+  /* Effort legend */
+  .eff-legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+    margin: 0 0 12px; padding: 9px 11px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--panel-2);
+  }
+  .eff-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .eff-legend-text { color: var(--muted); font-size: 10.5px; }
+  .eff-legend-note { flex-basis: 100%; color: var(--muted); font-size: 10px; font-style: italic; }
   .focus-sections { display: flex; flex-direction: column; gap: 12px; flex: 1; }
   .focus-section {
     padding: 6px 4px;
@@ -1341,7 +1362,9 @@
   /* A goal line, not a description of the data — longer dashes and full ink so
      it never reads as the median. Only one of the two is ever drawn. */
   .bi-target { stroke: var(--text); stroke-width: 1.25; stroke-dasharray: 7 4; opacity: .55; }
-  .bi-baseline-label { fill: var(--muted); font: 8.5px var(--sans); letter-spacing: .02em; }
+  .bi-ref-label { font: 8.5px var(--sans); letter-spacing: .02em; }
+  .bi-baseline-label { fill: var(--muted); }
+  .bi-target-label { fill: var(--text); opacity: .75; font-weight: 600; }
   .bi-chart-coverage { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
   .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
   .bi-trend-dot { stroke: var(--panel); stroke-width: 2; }
@@ -1609,6 +1632,43 @@
   function focusCountFor(ctx) {
     return state.tasks.filter(t => t.status === "focus" && !t.archived && t.context === ctx).length;
   }
+  // Every context that currently holds focus tasks, plus the capped ones even
+  // when empty — an empty Work slot is still information about remaining room.
+  function focusContexts() {
+    const live = new Set(state.tasks
+      .filter(t => t.status === "focus" && !t.archived)
+      .map(t => t.context || null));
+    for (const c of Object.keys(FOCUS_CAPS)) live.add(c);
+    return [...live].sort((a, b) => (a || '~').localeCompare(b || '~'));
+  }
+  // "W 4/7 · P 3" — compact enough for a column head, and the per-context
+  // figure is the one that actually gates whether another task fits.
+  function focusCapSummary() {
+    return focusContexts().map(ctx => {
+      const n = focusCountFor(ctx), cap = focusCapFor(ctx);
+      const initial = ctx ? ctx[0].toUpperCase() : '–';
+      return `${initial} ${Number.isFinite(cap) ? `${n}/${cap}` : n}`;
+    }).join(' · ');
+  }
+  // Capacity meter for the Focus view. Caps are per context, so one bar each —
+  // a single combined bar would let a full Work list hide behind Personal room.
+  function focusCapacityHtml() {
+    const rows = focusContexts().map(ctx => {
+      const n = focusCountFor(ctx), cap = focusCapFor(ctx);
+      const name = ctx || 'Uncategorized';
+      if (!Number.isFinite(cap)) {
+        return `<div class="fcap-row"><span class="fcap-name">${escapeHtml(name)}</span>
+          <span class="fcap-bar fcap-bar-none"></span>
+          <span class="fcap-val">${n} <small>no cap</small></span></div>`;
+      }
+      const pct = Math.min(100, Math.round(n / cap * 100));
+      const state_ = n > cap ? 'over' : n === cap ? 'full' : '';
+      return `<div class="fcap-row ${state_}"><span class="fcap-name">${escapeHtml(name)}</span>
+        <span class="fcap-bar"><span class="fcap-fill" style="width:${pct}%"></span></span>
+        <span class="fcap-val">${n}/${cap}${n > cap ? ' <small>over</small>' : n === cap ? ' <small>full</small>' : ''}</span></div>`;
+    }).join('');
+    return `<div class="fcap">${rows}</div>`;
+  }
   const TIMING_LABEL = {
     "this-week": "This Week",
     "next-week": "Next Week",
@@ -1616,6 +1676,17 @@
     "ongoing": "Ongoing",
   };
   const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
+  const EFFORT_HINTS  = { S: '~15 min', M: '~30 min', L: '~2 hr', XL: '~4 hr+' };
+  const EFFORT_LABELS = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra Large' };
+  // Shown wherever effort is grouped or picked. The scale is only meaningful if
+  // "L" says what it costs — a bare initial is a code you have to remember.
+  function effortLegendHtml(note = '') {
+    const items = ['S','M','L','XL'].map(e =>
+      `<span class="eff-legend-item"><span class="badge effort effort-${e}">${e}</span>
+        <span class="eff-legend-text">${EFFORT_LABELS[e]} · ${EFFORT_HINTS[e]} · ${POINTS[e]} pt${POINTS[e] === 1 ? '' : 's'}</span></span>`
+    ).join('');
+    return `<div class="eff-legend">${items}${note ? `<span class="eff-legend-note">${escapeHtml(note)}</span>` : ''}</div>`;
+  }
   const HISTORY_WEEKS = 12;
 
   const GROUP_BY = {
@@ -2234,8 +2305,10 @@
           countLabel = focusCapped(capCtx) ? `${tasks.length}/${focusCapFor(capCtx)}` : `${tasks.length}`;
         } else {
           // "All" view — cap is per-context, so flag if any one context is over.
+          // A bare total hid how close each context was to its own ceiling, which
+          // is the only number that governs whether another task can go in.
           overCap = focusCountFor("Work") > focusCapFor("Work") || focusCountFor("Personal") > focusCapFor("Personal");
-          countLabel = `${tasks.length}`;
+          countLabel = focusCapSummary() || `${tasks.length}`;
         }
       }
       if (overCap) colEl.classList.add("over-cap");
@@ -2538,7 +2611,6 @@
       .filter(t => t.status === 'done' && !t.archived && t.completedAt && new Date(t.completedAt) >= weekStart)
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
 
-    const POINTS = { S: 1, M: 2, L: 5, XL: 10 };
     const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const fmtDay = ts => {
       const d = new Date(ts); const t = new Date();
@@ -2547,8 +2619,6 @@
     };
     const totalPts = weekDone.reduce((s, t) => s + (POINTS[t.effort] || 0), 0);
 
-    const EFFORT_HINTS = { S: '~15 min', M: '~30 min', L: '~2 hr', XL: '~4 hr+' };
-    const EFFORT_LABELS = { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra Large' };
     const effortPicker = (task) => `
       <div class="tw-effort-picker" data-id="${escapeHtml(task.id)}">
         <span class="tw-effort-label">Add effort:</span>
@@ -2889,6 +2959,8 @@
               <div class="focus-col-title">Focus</div>
               <div class="focus-col-count">${focusTasks.length} ${focusTasks.length === 1 ? 'task' : 'tasks'}</div>
             </div>
+            ${focusCapacityHtml()}
+            ${effortLegendHtml('Sections below group by effort')}
             <input id="focus-add-input" class="focus-add-input" type="text" placeholder="+ Add a Focus task…" autocomplete="off" />
             <div class="focus-sections">${focusSectionsHtml}</div>
             <div class="focus-offramp">
@@ -4030,7 +4102,7 @@
       // a zoomed axis — position, not length, carries their meaning.)
       const vals = points.map(p => p.v), rawMax = Math.max(...vals, target ?? -Infinity), rawMin = Math.min(0, ...vals);
       const min = rawMin, max = rawMax + Math.max((rawMax - rawMin) * .08, 1);
-      const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
+      const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = target != null ? 62 : 10, T = 10, B = 28;
       const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, slot * .62);
       const y = v => T + (1 - (v-min)/range) * (H-T-B);
       const grid = [0,.5,1].map(frac => {
@@ -4042,7 +4114,8 @@
       const yZero = y(0);
       const zeroRule = rawMin < 0 ? `<line class="bi-grid-line" x1="${L}" y1="${yZero.toFixed(1)}" x2="${W-R}" y2="${yZero.toFixed(1)}"></line>` : '';
       const targetRule = target != null && target >= min && target <= max
-        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>` : '';
+        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>
+           <text class="bi-ref-label bi-target-label" x="${W-R+6}" y="${Math.max(T+7, y(target)+2.5).toFixed(1)}" text-anchor="start">goal ${valFmt(target)}</text>` : '';
       const bars = points.map(p => {
         const cx = L + (p.i+.5)*slot, vy = y(p.v);
         const top = Math.min(vy, yZero), height = Math.max(2, Math.abs(vy - yZero));
@@ -4070,7 +4143,9 @@
       const min = zeroBase ? (rawMin < 0 ? rawMin - padding : 0) : Math.max(0, rawMin - padding);
       const max = rawMax + padding;
       const range = Math.max(.001, max - min);
-      const W = 640, H = 190, L = 38, R = 10, T = 10, B = 28;
+      // R leaves a gutter for the reference-line label. Naming it outside the
+      // plot is the only placement that cannot collide with the line it labels.
+      const W = 640, H = 190, L = 38, R = 62, T = 10, B = 28;
       const x = i => L + (i / Math.max(1, data.length - 1)) * (W - L - R);
       const y = v => T + (1 - (v - min) / range) * (H - T - B);
       // Split into runs of consecutive logged periods. Drawing one path through
@@ -4111,12 +4186,18 @@
       // it collides with the line it is meant to be read against.
       // A target supersedes the median: two dashed rules in one plot is a riddle,
       // and when there is a goal the goal is the reference that matters.
+      const refLine = (cls, value, text) => {
+        const ry = y(value);
+        // Keep the label inside the canvas when the rule sits at the very edge.
+        const ty = Math.min(H - B - 1, Math.max(T + 7, ry + 2.5));
+        return `<line class="${cls}" x1="${L}" y1="${ry.toFixed(1)}" x2="${W-R}" y2="${ry.toFixed(1)}"></line>
+          <text class="bi-ref-label ${cls}-label" x="${W-R+6}" y="${ty.toFixed(1)}" text-anchor="start">${escapeHtml(text)}</text>`;
+      };
       const median = medianOf(data, key);
-      const by = y(median);
       const baseline = target != null && target >= min && target <= max
-        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>`
-        : points.length < 4 ? ''
-        : `<line class="bi-baseline" x1="${L}" y1="${by.toFixed(1)}" x2="${W-R}" y2="${by.toFixed(1)}"></line>`;
+        ? refLine('bi-target', target, `goal ${valFmt(target)}`)
+        : points.length < 4 || median == null ? ''
+        : refLine('bi-baseline', median, `median ${valFmt(median)}`);
       const labelIndexes = [...new Set([0, Math.floor((data.length-1)/2), data.length-1])];
       const labels = labelIndexes.map(i => `<text class="bi-axis-label" x="${x(i)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}">${escapeHtml(getLabel(data[i]))}</text>`).join('');
       const dots = points.map((p, idx) => {
@@ -4220,14 +4301,11 @@
       const span = trimEmptyEdges(periodData, key);
       const logged = span.filter(e => e[key] != null).length;
       const unitWord = _biPeriod === 'week' ? 'week' : _biPeriod === 'month' ? 'month' : 'quarter';
-      const median = medianOf(span, key);
       // Against a goal, the count of periods that cleared it says more than any
       // average — 106 and 104 are a near miss twice, not "roughly on target".
+      // The goal and median values themselves are now labelled on their lines.
       const hits = target == null ? null : span.filter(e => e[key] != null && e[key] >= target).length;
-      const medianNote = target != null && logged
-        ? ` · target ${fmt(target)}${unit ? ` ${unit}` : ''} · hit ${hits} of ${logged}`
-        : logged >= 4 && median != null && _biPeriod !== 'quarter'
-          ? ` · median ${fmt(median)}${unit ? ` ${unit}` : ''}` : '';
+      const medianNote = target != null && logged ? ` · hit ${hits} of ${logged}` : '';
       const coverage = !apiHasField || !logged ? ''
         : logged === periodData.length
           ? `<div class="bi-chart-coverage">All ${periodData.length} ${unitWord}s logged${medianNote}</div>`
