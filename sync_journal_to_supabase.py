@@ -66,6 +66,10 @@ def page_to_row(page, user_id, synced_at):
         value = formula_number(name)
         return value if value is not None and value > 0 else None
 
+    def rollup_number(name):
+        rollup = (props.get(name) or {}).get("rollup") or {}
+        return rollup.get("number") if rollup.get("type") == "number" else None
+
     def date_value(name):
         return ((props.get(name) or {}).get("date") or {}).get("start")
 
@@ -104,6 +108,8 @@ def page_to_row(page, user_id, synced_at):
         "avg_protein": positive_formula_number("Avg Protein"),
         "calorie_deficit": formula_number("Calorie Deficit"),
         "garmin_tdee": number("Garmin TDEE"),
+        "non_profile_meals": rollup_number("FL Non Profile"),
+        "dcp_meals": rollup_number("FL DCP"),
     }
 
     # The Notion food-log formulas average only the days that were actually
@@ -117,6 +123,13 @@ def page_to_row(page, user_id, synced_at):
         row["consumed_cals"] = None
         row["avg_protein"] = None
         row["calorie_deficit"] = None
+
+    # "FL Non Profile" is a sum rollup, so a week with an empty food log reports
+    # 0 rather than nothing — indistinguishable from a week of perfect adherence
+    # once it is drawn. Tie it to the same gate: no usable food log, no count.
+    if row["consumed_cals"] is None:
+        row["non_profile_meals"] = None
+        row["dcp_meals"] = None
 
     return row
 
@@ -159,7 +172,99 @@ def fetch_notion_rows(token, database_id, user_id):
             return rows
 
 
-def upsert_supabase_rows(supabase_url, secret_key, rows):
+def food_log_database_id(token, journal_database_id):
+    """Discover the Food Log database from the journal's own relation, so the id
+    never has to be configured separately or kept in sync by hand."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+    status, payload = http(
+        f"https://api.notion.com/v1/databases/{journal_database_id}/query",
+        method="POST",
+        headers=headers,
+        body={"page_size": 20, "sorts": [{"property": "Week of Journal", "direction": "descending"}]},
+    )
+    if status >= 400:
+        sys.exit(f"Notion error {status}: {payload}")
+    for page in payload.get("results", []):
+        relation = ((page.get("properties") or {}).get("Food Log") or {}).get("relation") or []
+        if not relation:
+            continue
+        status, related = http(f"https://api.notion.com/v1/pages/{relation[0]['id']}", headers=headers)
+        if status >= 400:
+            continue
+        parent = (related.get("parent") or {}).get("database_id")
+        if parent:
+            return parent
+    return None
+
+
+def fetch_food_log_rows(token, database_id, user_id):
+    """Individual meals. The weekly rollups in journal_entries say how many
+    non-profile meals a week held; these rows say which ones."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+    rows = []
+    cursor = None
+    synced_at = datetime.now(timezone.utc).isoformat()
+    while True:
+        body = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        status, payload = http(
+            f"https://api.notion.com/v1/databases/{database_id}/query",
+            method="POST",
+            headers=headers,
+            body=body,
+        )
+        if status >= 400:
+            sys.exit(f"Notion error {status}: {payload}")
+        for page in payload.get("results", []):
+            props = page.get("properties") or {}
+
+            def number(name):
+                return (props.get(name) or {}).get("number")
+
+            def formula_flag(name):
+                return bool(((props.get(name) or {}).get("formula") or {}).get("number"))
+
+            def select_name(name):
+                return ((props.get(name) or {}).get("select") or {}).get("name")
+
+            title = "".join(t.get("plain_text", "") for t in (props.get("Name") or {}).get("title", []))
+            when = ((props.get("When") or {}).get("date") or {}).get("start")
+            if not title:
+                continue
+            rows.append({
+                "user_id": user_id,
+                "notion_page_id": page.get("id"),
+                "name": title,
+                "eaten_at": when,
+                "meal_type": select_name("Select"),
+                "source": select_name("Source"),
+                "calories": number("Calories"),
+                "protein_g": number("Protein (g)"),
+                "carbs_g": number("Carbs (g)"),
+                "fat_g": number("Fat (g)"),
+                "is_non_profile": formula_flag("Is Non Profile"),
+                "is_dcp": formula_flag("Is DCP?"),
+                "is_cooked": formula_flag("Is Cooked"),
+                "source_updated_at": page.get("last_edited_time"),
+                "synced_at": synced_at,
+            })
+        if not payload.get("has_more"):
+            return rows
+        cursor = payload.get("next_cursor")
+        if not cursor:
+            return rows
+
+
+def upsert_supabase_rows(supabase_url, secret_key, rows, table="journal_entries", on_conflict="user_id,week"):
     headers = {
         "apikey": secret_key,
         "Authorization": f"Bearer {secret_key}",
@@ -167,8 +272,8 @@ def upsert_supabase_rows(supabase_url, secret_key, rows):
         "Prefer": "resolution=merge-duplicates,return=minimal",
     }
     endpoint = (
-        f"{supabase_url}/rest/v1/journal_entries?"
-        + urlparse.urlencode({"on_conflict": "user_id,week"})
+        f"{supabase_url}/rest/v1/{table}?"
+        + urlparse.urlencode({"on_conflict": on_conflict})
     )
     synced = 0
     for start in range(0, len(rows), 250):
@@ -216,6 +321,25 @@ def main():
         rows,
     )
     print(f"Upserted {synced} journal entries into Supabase.")
+
+    # Individual meals, so the dashboard can drill into a weekly rollup. Skipped
+    # rather than fatal if the relation cannot be resolved — the weekly numbers
+    # above are the primary sync and should not fail with it.
+    print("Fetching food log entries from Notion...", flush=True)
+    food_db = food_log_database_id(required["NOTION_TOKEN"], required["NOTION_JOURNAL_DB_ID"])
+    if not food_db:
+        print("Could not resolve the Food Log database from the journal relation; skipped.")
+        return
+    meals = fetch_food_log_rows(required["NOTION_TOKEN"], food_db, required["KANBAN_USER_ID"])
+    print(f"Fetched {len(meals)} food log entries.", flush=True)
+    synced_meals = upsert_supabase_rows(
+        required["SUPABASE_URL"],
+        required["SUPABASE_SECRET_KEY"],
+        meals,
+        table="food_log_entries",
+        on_conflict="user_id,notion_page_id",
+    )
+    print(f"Upserted {synced_meals} food log entries into Supabase.")
 
 
 if __name__ == "__main__":

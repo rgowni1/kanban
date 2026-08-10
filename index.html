@@ -1385,6 +1385,30 @@
   .bi-tooltip strong { display: block; color: #fff; font-size: 11px; }
   .bi-tooltip span { color: rgba(255,255,255,.7); }
   .bi-empty-chart { display: grid; place-items: center; height: 154px; color: var(--muted); font-size: 11px; }
+  /* Drill-down: a chart card that opens the rows behind its number */
+  .bi-chart-card.drillable { cursor: zoom-in; }
+  .bi-chart-card.drillable:hover { border-color: var(--viz-fuel); }
+  .bi-drill-hint { margin-top: 3px; color: var(--muted); font-size: 9.5px; font-style: italic; }
+  .meal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.42); z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .meal-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 60px rgba(0,0,0,0.34); width: 620px; max-width: 96vw; max-height: 86vh; display: flex; flex-direction: column; padding: 20px 22px; }
+  .meal-modal h3 { margin: 0; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .meal-def { margin: 8px 0 0; padding: 9px 11px; border-left: 2px solid var(--viz-fuel); background: var(--panel-2); border-radius: 0 6px 6px 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+  .meal-tally { display: flex; flex-wrap: wrap; gap: 14px; margin: 13px 0 2px; font-size: 11.5px; color: var(--muted); }
+  .meal-tally b { color: var(--text); font-size: 15px; font-weight: 650; margin-right: 3px; }
+  .meal-list { list-style: none; margin: 12px 0 0; padding: 0 2px 0 0; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+  .meal-day { margin: 6px 0 1px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+  .meal-row { display: flex; align-items: flex-start; gap: 11px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel-2); }
+  .meal-emoji { flex: 0 0 auto; font-size: 19px; line-height: 1.2; }
+  .meal-body { flex: 1; min-width: 0; }
+  .meal-name { color: var(--text); font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+  .meal-meta { margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+  .meal-macros { flex: 0 0 auto; text-align: right; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.5; }
+  .meal-macros b { display: block; color: var(--text); font-size: 13px; font-weight: 650; }
+  .meal-over { color: var(--viz-fuel); font-weight: 650; }
+  .meal-empty { padding: 22px 4px; text-align: center; color: var(--muted); font-size: 12.5px; }
+  .meal-actions { display: flex; justify-content: flex-end; margin-top: 15px; }
+  .meal-actions button { font-size: 13px; padding: 7px 15px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); cursor: pointer; }
+  .meal-actions button:hover { background: var(--panel); }
   .bi-toggle {
     display: flex; gap: 3px; flex: 0 0 auto; background: color-mix(in srgb, var(--panel) 88%, transparent);
     border: 1px solid var(--border); border-radius: 999px; padding: 4px;
@@ -4021,6 +4045,131 @@
     return _journalFetch;
   }
 
+  // Individual meals behind the weekly food-log rollups. Fetched lazily — only
+  // the drill-down needs them, so the dashboard's first paint doesn't wait.
+  let _mealData = null;
+  let _mealFetch = null;
+  function fetchMeals() {
+    if (_mealData) return Promise.resolve(_mealData);
+    if (!_mealFetch) {
+      _mealFetch = supabase
+        .from('food_log_entries')
+        .select('*')
+        .order('eaten_at', { ascending: false })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          _mealData = data || [];
+          return _mealData;
+        })
+        .catch(() => { _mealFetch = null; return null; });
+    }
+    return _mealFetch;
+  }
+
+  // Emoji by what the meal actually is. First match wins, so the specific
+  // patterns sit above the generic ones.
+  const MEAL_EMOJI = [
+    [/cookie|brownie|cake|dessert|ice cream|gelato|donut|doughnut/, '🍪'],
+    [/croissant|pastry|scone|muffin|danish/, '🥐'],
+    [/pizza/, '🍕'],
+    [/burger|cheeseburger/, '🍔'],
+    [/burrito|taco|quesadilla|nachos/, '🌮'],
+    [/pasta|spaghetti|lasagna|noodle|ramen|pad thai/, '🍝'],
+    [/sushi|sashimi|poke/, '🍣'],
+    [/sandwich|sub |panini|bagel|toast/, '🥪'],
+    [/fries|chips|crisps/, '🍟'],
+    [/curry|tikka|masala|biryani|dosa|naan/, '🍛'],
+    [/rice|bowl/, '🍚'],
+    [/salad|greens/, '🥗'],
+    [/chicken|steak|beef|pork|lamb|bbq/, '🍖'],
+    [/egg|omelet|omelette/, '🍳'],
+    [/oat|granola|cereal|yogurt|chia/, '🥣'],
+    [/latte|cappuccino|cortado|coffee|macchiato|espresso/, '☕'],
+    [/beer|wine|cocktail|margarita|whiskey|vodka/, '🍺'],
+    [/smoothie|shake|juice/, '🥤'],
+    [/soup|pho|broth/, '🍲'],
+    [/bread|baguette|focaccia/, '🥖'],
+    [/cheese/, '🧀'],
+    [/fruit|apple|banana|berry|berries|mango/, '🍎'],
+  ];
+  const mealEmoji = name => {
+    const n = String(name || '').toLowerCase();
+    for (const [re, emoji] of MEAL_EMOJI) if (re.test(n)) return emoji;
+    return '🍽️';
+  };
+  const MEAL_TYPE_EMOJI = { Breakfast: '🌅', Lunch: '🌞', Dinner: '🌙', Snack: '🍿' };
+  const SOURCE_EMOJI = { Home: '🏠', Restaurant: '🍴', Other: '📦' };
+
+  const NON_PROFILE_DEF = 'A meal carrying at least 60 g carbs and 25 g fat — high in both at once. Notion flags these automatically from the macros you log; nothing is tagged by hand.';
+
+  // Drill-down from the non-profile rollup to the meals behind it.
+  async function openNonProfileMeals(days = 8) {
+    const meals = await fetchMeals();
+    const host = document.createElement('div');
+    host.className = 'meal-backdrop';
+    const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+
+    let body;
+    if (!meals) {
+      body = `<div class="meal-empty">Could not load the food log. Run <code>python3 sync_journal_to_supabase.py</code> and try again.</div>`;
+    } else {
+      const cutoff = new Date();
+      cutoff.setHours(0, 0, 0, 0);
+      cutoff.setDate(cutoff.getDate() - (days - 1));
+      const recent = meals.filter(m => m.is_non_profile && m.eaten_at && new Date(m.eaten_at) >= cutoff);
+      if (!recent.length) {
+        body = `<div class="meal-empty">🎉 No non-profile meals in the last ${days} days.</div>`;
+      } else {
+        // Group by day so a heavy single day reads as one day, not five rows.
+        const byDay = new Map();
+        for (const m of recent) {
+          const d = new Date(m.eaten_at);
+          const key = d.toDateString();
+          if (!byDay.has(key)) byDay.set(key, []);
+          byDay.get(key).push(m);
+        }
+        const num = v => v == null ? '—' : Math.round(v);
+        body = [...byDay.entries()].map(([day, rows]) => {
+          const d = new Date(day);
+          const label = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+          return `<li class="meal-day">${escapeHtml(label)} · ${rows.length} meal${rows.length === 1 ? '' : 's'}</li>` +
+            rows.map(m => `<li class="meal-row">
+              <span class="meal-emoji">${m.is_dcp ? '🍪' : mealEmoji(m.name)}</span>
+              <span class="meal-body">
+                <span class="meal-name">${escapeHtml(m.name)}</span>
+                <span class="meal-meta">${MEAL_TYPE_EMOJI[m.meal_type] || ''} ${escapeHtml(m.meal_type || 'Meal')}
+                  · ${SOURCE_EMOJI[m.source] || ''} ${escapeHtml(m.source || 'Unknown')}${m.is_dcp ? ' · 🧁 dessert/pastry' : ''}</span>
+              </span>
+              <span class="meal-macros"><b>${num(m.calories)} kcal</b>
+                <span class="meal-over">${num(m.carbs_g)}c</span> · <span class="meal-over">${num(m.fat_g)}f</span> · ${num(m.protein_g)}p</span>
+            </li>`).join('');
+        }).join('');
+        const totalCal = recent.reduce((s, m) => s + (Number(m.calories) || 0), 0);
+        const dcp = recent.filter(m => m.is_dcp).length;
+        const out = recent.filter(m => m.source === 'Restaurant').length;
+        body = `<div class="meal-tally">
+            <span><b>${recent.length}</b> non-profile meal${recent.length === 1 ? '' : 's'}</span>
+            <span><b>${byDay.size}</b> of ${days} days</span>
+            <span><b>${totalCal.toLocaleString()}</b> kcal</span>
+            <span><b>${dcp}</b> 🍪 dessert/pastry</span>
+            <span><b>${out}</b> 🍴 eaten out</span>
+          </div><ul class="meal-list">${body}</ul>`;
+      }
+    }
+
+    host.innerHTML = `<div class="meal-modal" role="dialog" aria-modal="true" aria-label="Non-profile meals">
+        <h3>🍔 Non-profile meals · last ${days} days</h3>
+        <p class="meal-def">${escapeHtml(NON_PROFILE_DEF)}</p>
+        ${body}
+        <div class="meal-actions"><button type="button">Close</button></div>
+      </div>`;
+    host.addEventListener('click', e => { if (e.target === host) close(); });
+    host.querySelector('.meal-actions button').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(host);
+  }
+
   async function renderPersonalStatsPage() {
     const el = document.getElementById('personal-stats-page');
     if (!_journalData) {
@@ -4083,6 +4232,10 @@
           articles:   sumOf(rows, 'articles'),  podcasts:   sumOf(rows, 'podcasts'),
           consumed_cals: avgOf(rows, 'consumed_cals'), garmin_tdee: avgOf(rows, 'garmin_tdee'),
           avg_protein: avgOf(rows, 'avg_protein'), calorie_deficit: avgOf(rows, 'calorie_deficit'),
+          // A count of meals, so it totals across a period — its neighbours here
+          // are daily averages and average instead.
+          non_profile_meals: sumOf(rows, 'non_profile_meals'),
+          dcp_meals: sumOf(rows, 'dcp_meals'),
         };
       });
     }
@@ -4267,6 +4420,7 @@
       body_fat:'Garmin computer-use → Notion', stress:'Garmin computer-use → Notion', meditation:'Garmin computer-use → Notion',
       garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
       avg_protein:'Notion food log', calorie_deficit:'Notion formula',
+      non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
       articles:'Readwise via oura.py → Notion', podcasts:'Readwise via oura.py → Notion'
     };
     const sourceFor = key => sourceByKey[key] || 'Notion journal';
@@ -4297,7 +4451,7 @@
         <div class="bi-summary-source">Source · ${sourceFor(key)}</div>
       </div>`;
 
-    const chartCard = (label, note, key, color, fmt, zeroBase, unit='', target=null) => {
+    const chartCard = (label, note, key, color, fmt, zeroBase, unit='', target=null, drill=null) => {
       const latest = [...periodData].reverse().find(e => e[key] != null);
       const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
       const chartBody = !apiHasField
@@ -4321,9 +4475,9 @@
       const asOf = latest && latest !== periodData.at(-1)
         ? `<small class="bi-asof">${unit ? `${unit} · ` : ''}as of ${getLabel(latest)}</small>`
         : unit ? `<small>${unit}</small>` : '';
-      return `<article class="bi-chart-card">
+      return `<article class="bi-chart-card${drill ? ' drillable' : ''}"${drill ? ` data-drill="${drill}" title="Double-click to see the meals behind this"` : ''}>
         <div class="bi-chart-head">
-          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div>${coverage}</div>
+          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div>${coverage}${drill ? `<div class="bi-drill-hint">Double-click to see the meals →</div>` : ''}</div>
           <div class="bi-chart-current">${latest ? fmt(latest[key]) : '—'}${asOf}</div>
         </div>
         ${chartBody}
@@ -4345,6 +4499,8 @@
       {key:'weekly_weight', label:'Weight',        fmt:fmt1,   unit:'lbs',  inverse:true,  hue:'body'},
       {key:'consumed_cals', label:'Calories',      fmt:fmtInt, unit:'kcal', inverse:false, hue:'fuel'},
       {key:'avg_protein',   label:'Protein',       fmt:fmtInt, unit:'g',    inverse:false, hue:'fuel'},
+      // Treated as lower-is-better: off-profile meals read as drift from the plan.
+      {key:'non_profile_meals', label:'Non-profile meals', fmt:fmtInt, unit:'', inverse:true, hue:'fuel'},
       {key:'stress',        label:'Stress',        fmt:fmtInt, unit:'',     inverse:true,  hue:'mind'},
       {key:'articles',      label:'Articles',      fmt:fmtInt, unit:'',     inverse:false, hue:'mind'},
     ];
@@ -4485,6 +4641,8 @@
           ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
           ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
+          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Meals with ≥60 g carbs and ≥25 g fat${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
+          ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items')}
         </div>
 
         <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
@@ -4514,6 +4672,10 @@
       target.onmouseenter = event => showTooltip(event, target);
       target.onmousemove = positionTooltip;
       target.onmouseleave = () => tooltip.classList.remove('visible');
+    });
+
+    el.querySelectorAll('[data-drill="non-profile"]').forEach(card => {
+      card.addEventListener('dblclick', () => openNonProfileMeals(8));
     });
 
     el.querySelectorAll('[data-biperiod]').forEach(btn => {

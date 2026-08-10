@@ -5,10 +5,12 @@ Personal kanban for Rocky. Supabase-backed, static frontend on GitHub Pages, loc
 ## Architecture
 
 ```
-index.html  ──HTTP──>  Supabase REST  ──>  Postgres (tasks table, RLS)
+index.html  ──HTTP──>  Supabase REST  ──>  Postgres (tasks + journal_entries, RLS)
                             ^
                             │
 mcp_server.py (stdio)  ─────┘  ← Claude Code / Claude.ai (local)
+
+Notion Logging Journal ──> sync_journal_to_supabase.py ──> journal_entries
 ```
 
 Auth: Supabase email+password (single user). Anon publishable key is committed to `index.html`; RLS enforces per-user access.
@@ -23,7 +25,9 @@ Auth: Supabase email+password (single user). Anon publishable key is committed t
 | `run_sql.py` | Runs arbitrary SQL via Supabase Management API. Uses `SUPABASE_ACCESS_TOKEN` from `.env`. |
 | `set_password.py` | One-shot admin-API call to set the kanban user's password. |
 | `import_to_supabase.py` | One-time Notion → Supabase importer. Already run; preserved for reference. |
-| `server.py` | **Legacy.** Notion-backed REST server on port 5173. Do not extend. Kept until everything is verified post-migration. |
+| `sync_journal_to_supabase.py` | Idempotent Notion Logging Journal → Supabase sync. Used locally and by GitHub Actions. |
+| `supabase/migrations/` | Checked-in database migrations, including the authenticated `journal_entries` table and RLS policy. |
+| `server.py` | **Legacy.** Notion-backed REST server on port 5173. Personal Intelligence no longer depends on it after the journal migration. |
 | `.env` | Secrets (gitignored): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `KANBAN_USER_ID`, `SUPABASE_ACCESS_TOKEN`, plus legacy Notion vars. |
 
 ## Schema (`tasks`)
@@ -73,7 +77,7 @@ There is no server-side scheduler; whichever machine opens the app first that we
 
 ## Related repos
 
-- **This repo on GitHub:** `git@github.com:rgowni1/kanban.git` (`origin`). Target deploy: GitHub Pages serving `index.html`.
+- **This repo on GitHub:** `git@github.com:rgowni1/kanban.git` (`origin`). Production is GitHub Pages serving `index.html`.
 - **Sonar MCP** (for the planned `sync_inbox` feature): `~/tm_workspace/tidemark-backend/tidemark_backend/sonar_mcp/`
   - Email tool definition: `tools/mail.py` (`get_emails`). To expose Outlook flag status, add `flag` to the Graph `$select` and add a `flagged_only` arg.
 - **Tidemark backend (broader)**: `~/tm_workspace/tidemark-backend/`
@@ -82,7 +86,6 @@ There is no server-side scheduler; whichever machine opens the app first that we
 
 - **File attachments on tasks.** No Supabase Storage bucket, no `attachments` table/column, no upload UI. Only `source_link` (URL string) exists.
 - **`sync_inbox` MCP tool** to pull Outlook-flagged emails. Blocked on Sonar exposing flag status (see `tools/mail.py` above).
-- **GitHub Pages deploy.** Repo exists (`git@github.com:rgowni1/kanban.git`) but Pages isn't configured yet.
 - **Remote MCP** for browser Claude / Cowork / phone. Current `mcp_server.py` is stdio-only; would need an HTTP/SSE transport and somewhere to host it for non-local clients to use it.
 
 ## Common commands
@@ -90,6 +93,9 @@ There is no server-side scheduler; whichever machine opens the app first that we
 ```bash
 # Serve the frontend locally
 python3 -m http.server 8000              # then open http://localhost:8000
+
+# Refresh Personal Intelligence data from Notion
+python3 sync_journal_to_supabase.py
 
 # Run a SQL migration / one-off query
 python3 run_sql.py "SELECT count(*) FROM tasks;"
