@@ -743,6 +743,13 @@
   .today-card.subtask { margin-left: 20px; background: transparent; }
   .today-card.subtask:hover { background: var(--panel); }
   .today-card.today-proj-focus { font-weight: 600; }
+  /* Drop-into-project affordance — outline rather than fill, so the row's own
+     content stays readable while it is being targeted. */
+  .project-drop-target {
+    outline: 2px solid var(--accent); outline-offset: -1px;
+    background: var(--accent-soft) !important; border-radius: 8px;
+  }
+  #today-view.is-dragging [data-project-drop] { box-shadow: inset 0 0 0 1px var(--border); border-radius: 8px; }
   .today-card.focus-child { background: transparent; }
   .today-card.focus-child:hover { background: var(--panel); }
   .today-check {
@@ -1826,6 +1833,20 @@
   function childrenOf(id) {
     return state.tasks.filter(t => t.parentId === id && !t.archived);
   }
+  // Same 2-level rules mcp_server.validate_parent enforces, checked client-side
+  // so a drag that could never be saved is refused before it is attempted.
+  // Returns an error string, or null when the move is allowed.
+  function parentMoveError(task, parentId) {
+    if (!task || !parentId) return 'nothing to move';
+    if (task.id === parentId) return 'a task cannot be its own parent';
+    const parent = state.tasks.find(t => t.id === parentId);
+    if (!parent) return 'that project no longer exists';
+    if (parent.parentId) return 'only 2 levels allowed — that is already a subtask';
+    if (childrenOf(task.id).length) return `"${truncate(task.title)}" has subtasks of its own`;
+    if (task.parentId === parentId) return null;
+    return null;
+  }
+
   function isProject(t) {
     return !t.parentId && childrenOf(t.id).length > 0;
   }
@@ -2537,7 +2558,7 @@
     const groupHeader = (g, collapsed) => {
       const pts = projectEffortPoints(g.project.id);
       return `
-      <li class="today-group" data-open="${escapeHtml(g.project.id)}" title="Open project to edit">
+      <li class="today-group" data-open="${escapeHtml(g.project.id)}" data-project-drop="${escapeHtml(g.project.id)}" title="Open project to edit · drop a task here to add it">
         <span class="today-group-caret" data-toggle-group="${escapeHtml(g.project.id)}" title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▸' : '▾'}</span>
         <span class="today-group-name">📁 ${escapeHtml(g.project.title)}</span>
         <span class="today-group-count">${g.kids.length}${pts ? ` · ${pts} pts` : ''}</span>
@@ -2550,7 +2571,7 @@
       const { done, total } = projectProgress(t.id);
       const pts = projectEffortPoints(t.id);
       return `
-      <li class="today-card focus today-proj-focus" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" title="Click or drag project to Available">
+      <li class="today-card focus today-proj-focus" draggable="true" data-task-id="${escapeHtml(t.id)}" data-move-available="${escapeHtml(t.id)}" data-project-drop="${escapeHtml(t.id)}" title="Click or drag project to Available · drop a task here to add it">
         <span class="ctx-ico">📁</span><span class="today-card-title">${escapeHtml(t.title) || '<em>Untitled</em>'}</span>
         ${pts ? `<span class="today-due">${pts} pts</span>` : ''}
         <span class="today-due">${done}/${total}</span>
@@ -2803,8 +2824,8 @@
     const clearTodayDrag = () => {
       todayDragId = null;
       root.classList.remove('is-dragging');
-      root.querySelectorAll('.today-card.dragging, .today-pane.drag-over').forEach(el => {
-        el.classList.remove('dragging', 'drag-over');
+      root.querySelectorAll('.today-card.dragging, .today-pane.drag-over, .project-drop-target').forEach(el => {
+        el.classList.remove('dragging', 'drag-over', 'project-drop-target');
       });
     };
     root.addEventListener('dragstart', (e) => {
@@ -2820,29 +2841,61 @@
       root.classList.add('is-dragging');
     });
     root.addEventListener('dragend', clearTodayDrag);
+    // A project row sits inside a pane, so it has to win the hit-test — otherwise
+    // every drop onto a project would just be read as a drop into its pane.
+    const projectTargetFor = (node) => {
+      const row = node.closest && node.closest('[data-project-drop]');
+      if (!row || !todayDragId) return null;
+      const task = state.tasks.find(t => t.id === todayDragId);
+      return task && !parentMoveError(task, row.dataset.projectDrop) ? row : null;
+    };
     root.addEventListener('dragover', (e) => {
+      const proj = projectTargetFor(e.target);
       const pane = e.target.closest('[data-today-drop]');
-      if (!pane || !todayDragId) return;
+      if ((!pane && !proj) || !todayDragId) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      root.querySelectorAll('.today-pane.drag-over').forEach(el => {
-        if (el !== pane) el.classList.remove('drag-over');
+      root.querySelectorAll('.project-drop-target').forEach(el => {
+        if (el !== proj) el.classList.remove('project-drop-target');
       });
-      pane.classList.add('drag-over');
+      root.querySelectorAll('.today-pane.drag-over').forEach(el => {
+        if (el !== pane || proj) el.classList.remove('drag-over');
+      });
+      if (proj) proj.classList.add('project-drop-target');
+      else if (pane) pane.classList.add('drag-over');
     });
     root.addEventListener('dragleave', (e) => {
       const pane = e.target.closest('[data-today-drop]');
       if (pane && !pane.contains(e.relatedTarget)) pane.classList.remove('drag-over');
+      const row = e.target.closest && e.target.closest('[data-project-drop]');
+      if (row && !row.contains(e.relatedTarget)) row.classList.remove('project-drop-target');
     });
     root.addEventListener('drop', (e) => {
+      const proj = e.target.closest && e.target.closest('[data-project-drop]');
       const pane = e.target.closest('[data-today-drop]');
-      if (!pane) return;
+      if (!pane && !proj) return;
       e.preventDefault();
       const id = e.dataTransfer.getData('text/plain') || todayDragId;
       const task = state.tasks.find(t => t.id === id);
-      const destination = pane.dataset.todayDrop;
+      const destination = pane && pane.dataset.todayDrop;
       clearTodayDrag();
       if (!task) return;
+
+      if (proj) {
+        const parentId = proj.dataset.projectDrop;
+        const err = parentMoveError(task, parentId);
+        if (err) return flashStatus(`Can't nest that — ${err}`);
+        if (task.parentId === parentId) return;
+        const project = state.tasks.find(t => t.id === parentId);
+        // Adopt the project's context, matching how tasks added inside a project
+        // inherit it — otherwise a child hides from the board under its old one.
+        const patch = { parentId };
+        if (project && project.context && project.context !== task.context) patch.context = project.context;
+        patchTask(id, patch);
+        flashStatus(`Moved into ${truncate(project ? project.title : 'project')}`);
+        return;
+      }
+
       if (destination === 'focus' && task.status !== 'focus') promoteToFocus(id);
       else if (destination === 'available' && task.status === 'focus') {
         patchTask(id, { status: 'in-progress' });
