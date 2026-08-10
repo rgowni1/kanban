@@ -4114,10 +4114,10 @@
     'non-profile': {
       emoji: '🍔',
       title: 'Non-profile meals',
-      def: 'Carbs ≥ 60 g <b>and</b> fat ≥ 25 g in one sitting. Flagged automatically from the macros you log.',
+      def: 'Under <b>20% of calories from protein</b>, on a meal of 200 kcal or more — a meal that did not earn its calories. Size-independent, so a big high-protein plate is fine and a small pastry is not.',
       match: m => m.is_non_profile,
-      // The two numbers that tripped the flag, so the row explains itself.
-      callout: m => ['carbs_g', 'fat_g'],
+      // Protein is the number that fell short, so it is the one to call out.
+      callout: m => ['protein_g'],
       none: 'No non-profile meals',
     },
     dcp: {
@@ -4678,7 +4678,7 @@
           ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
           ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
-          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Meals with ≥60 g carbs and ≥25 g fat${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
+          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under 20% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
         </div>
 
