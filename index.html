@@ -1438,6 +1438,13 @@
   .meal-time-reset:hover { background: var(--panel); color: var(--text); }
   .meal-empty { padding: 26px 4px; text-align: center; color: var(--text); font-size: 13px; }
   .meal-empty span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+  .bi-freshness { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: var(--muted); font-size: 10.5px; }
+  .bi-freshness .bi-dot { width: 6px; height: 6px; border-radius: 50%; background: #3f9e5a; flex: 0 0 auto; }
+  .bi-freshness.stale { color: var(--viz-fuel); }
+  .bi-freshness.stale .bi-dot { background: var(--viz-fuel); }
+  .bi-refresh { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 10px; cursor: pointer; }
+  .bi-refresh:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+  .bi-refresh:disabled { opacity: .55; cursor: default; }
   .bi-period-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .bi-span { display: flex; align-items: center; gap: 9px; cursor: pointer; }
   .bi-span-slider { width: 132px; height: 4px; -webkit-appearance: none; appearance: none; border-radius: 3px; background: var(--border); cursor: grab; }
@@ -4155,6 +4162,32 @@
     return _journalFetch;
   }
 
+  // Both caches live for the whole session, so a tab left open overnight keeps
+  // drawing the numbers it loaded on open while the sync moves on without it —
+  // and says nothing about it. Drop them and the next render refetches.
+  function invalidateJournalCaches() {
+    _journalData = null; _journalFetch = null;
+    _mealData = null; _mealFetch = null;
+  }
+
+  // How stale the drawn data is, from the sync's own `synced_at` stamp rather
+  // than from when the tab happened to load.
+  const SYNC_INTERVAL_HRS = 3;   // matches the cron in .github/workflows/sync-journal.yml
+  function syncAge(entries) {
+    const stamps = (entries || []).map(e => e.synced_at).filter(Boolean).sort();
+    if (!stamps.length) return null;
+    const at = new Date(stamps[stamps.length - 1]);
+    if (isNaN(at)) return null;
+    const mins = Math.max(0, Math.round((Date.now() - at.getTime()) / 60000));
+    const label = mins < 1 ? 'just now'
+      : mins < 60 ? `${mins} min ago`
+      : mins < 1440 ? `${Math.round(mins / 60)} hr ago`
+      : `${Math.round(mins / 1440)} d ago`;
+    // One missed run is noise; two means the schedule is broken, which is worth
+    // saying out loud given this workflow silently failed 17 times in a row.
+    return { at, mins, label, stale: mins > SYNC_INTERVAL_HRS * 60 * 2 };
+  }
+
   // Individual meals behind the weekly food-log rollups. Fetched lazily — only
   // the drill-down needs them, so the dashboard's first paint doesn't wait.
   let _mealData = null;
@@ -4943,6 +4976,7 @@
 
     // Cap the slider at what exists. Dragging to 52 weeks when the journal
     // holds 30 would promise a year and quietly draw seven months.
+    const age = syncAge(entries);
     const spanCfg   = BI_SPAN[_biPeriod];
     const available = _biPeriod === 'week' ? entries.length : countPeriods();
     const spanMax   = Math.max(spanCfg.min, Math.min(spanCfg.max, available));
@@ -4960,6 +4994,11 @@
             <h2>Health, in perspective.</h2>
             <p class="subtitle">A clear view of recovery, training, body, and habits—so the signal is easier to spot than the noise.</p>
             <div class="bi-updated">Current journal week · ${entries.at(-1) ? wkLbl(entries.at(-1)) : 'No entries yet'}${currentWeek.slp_score == null ? ' · Oura sleep data pending' : ''}</div>
+            <div class="bi-freshness${age?.stale ? ' stale' : ''}">
+              <span class="bi-dot" aria-hidden="true"></span>
+              <span>${age ? `Synced ${escapeHtml(age.label)}` : 'Sync time unknown'}${age?.stale ? ' · behind schedule' : ''}</span>
+              <button type="button" class="bi-refresh" title="Refetch from Supabase">Refresh</button>
+            </div>
           </div>
         </div>
 
@@ -5098,6 +5137,17 @@
 
     // The label tracks the drag, but the page only rebuilds on release —
     // re-rendering sixteen SVG charts on every pixel of travel stutters.
+    const refresh = el.querySelector('.bi-refresh');
+    if (refresh) {
+      refresh.addEventListener('click', async () => {
+        refresh.disabled = true;
+        refresh.textContent = 'Refreshing…';
+        invalidateJournalCaches();
+        await fetchJournal();
+        renderPersonalStatsPage();
+      });
+    }
+
     const slider = el.querySelector('.bi-span-slider');
     if (slider) {
       const readout = el.querySelector('.bi-span-value');
