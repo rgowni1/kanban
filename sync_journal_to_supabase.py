@@ -8,14 +8,27 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
+from zoneinfo import ZoneInfo
 
 NOTION_VERSION = "2022-06-28"
 # Below this daily average the food log was abandoned mid-week, not eaten.
 MIN_PLAUSIBLE_DAILY_CALS = 900
+# Meal times come out of Notion with a real UTC offset, so they are only
+# meaningful once resolved back to the timezone they were eaten in.
+LOCAL_TZ = ZoneInfo(os.environ.get("FOOD_LOG_TZ", "America/Los_Angeles"))
+# An eating day runs 04:00 -> 03:59. A 00:30 snack is the tail of the night
+# before, not a 30-minute-past-midnight start to the next day.
+EATING_DAY_START_MIN = 4 * 60
+# Averaging first/last meal over one or two logged days describes the logging,
+# not the week: the week of 2026-04-27 holds a single 20:00 meal and would
+# otherwise report a 20:00 first meal and a 0-hour eating window. Coverage
+# (`meal_days`, `total_meals`) is still reported for these weeks; the averages
+# derived from them are not.
+MIN_TIMING_DAYS = 3
 
 
 def load_env(path=".env"):
@@ -110,6 +123,7 @@ def page_to_row(page, user_id, synced_at):
         "garmin_tdee": number("Garmin TDEE"),
         "non_profile_meals": rollup_number("FL Non Profile"),
         "dcp_meals": rollup_number("FL DCP"),
+        "cooked_meals": rollup_number("FL Cooked"),
     }
 
     # The Notion food-log formulas average only the days that were actually
@@ -130,6 +144,7 @@ def page_to_row(page, user_id, synced_at):
     if row["consumed_cals"] is None:
         row["non_profile_meals"] = None
         row["dcp_meals"] = None
+        row["cooked_meals"] = None
 
     return row
 
@@ -264,6 +279,97 @@ def fetch_food_log_rows(token, database_id, user_id):
             return rows
 
 
+def fetch_time_overrides(supabase_url, secret_key, user_id):
+    """Meal times corrected in the dashboard. The sync owns `eaten_at`, so the
+    only way an edit survives is for the derived timing below to prefer the
+    override — otherwise the weekly charts would keep reporting the wrong time
+    the correction was made to fix."""
+    query = urlparse.urlencode({
+        "select": "notion_page_id,eaten_at_override",
+        "user_id": f"eq.{user_id}",
+        "eaten_at_override": "not.is.null",
+    })
+    status, payload = http(
+        f"{supabase_url}/rest/v1/food_log_entries?{query}",
+        headers={"apikey": secret_key, "Authorization": f"Bearer {secret_key}"},
+    )
+    if status >= 400 or not isinstance(payload, list):
+        print(f"Could not read meal-time overrides ({status}); using Notion times as-is.", flush=True)
+        return {}
+    return {r["notion_page_id"]: r["eaten_at_override"] for r in payload if r.get("notion_page_id")}
+
+
+def local_eating_slot(timestamp):
+    """(eating-day date, minutes into the day) for a meal, or None if the row
+    carries no usable time. Notion returns a real offset on timed entries; a
+    date-only entry has no time to read and is skipped rather than guessed at
+    as midnight, which would otherwise register as an absurd 00:00 first meal."""
+    if not timestamp or "T" not in timestamp:
+        return None
+    try:
+        moment = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        return None
+    local = moment.astimezone(LOCAL_TZ)
+    minutes = local.hour * 60 + local.minute
+    day = local.date()
+    if minutes < EATING_DAY_START_MIN:
+        day -= timedelta(days=1)
+        minutes += 24 * 60
+    return day, minutes
+
+
+def weekly_meal_timing(meals, overrides=None):
+    """Per-week average first and last meal, keyed by the Monday of the week so
+    it merges straight onto the journal rows. Notion has no rollup for this, so
+    it is derived here rather than read."""
+    overrides = overrides or {}
+    by_day = {}
+    meals_per_week = {}
+    for meal in meals:
+        slot = local_eating_slot(overrides.get(meal["notion_page_id"]) or meal.get("eaten_at"))
+        if not slot:
+            continue
+        day, minutes = slot
+        week = (day - timedelta(days=day.weekday())).isoformat()
+        meals_per_week[week] = meals_per_week.get(week, 0) + 1
+        first, last = by_day.get(day, (minutes, minutes))
+        by_day[day] = (min(first, minutes), max(last, minutes))
+
+    by_week = {}
+    for day, (first, last) in by_day.items():
+        week = (day - timedelta(days=day.weekday())).isoformat()
+        by_week.setdefault(week, []).append((first, last))
+
+    timing = {}
+    for week, days in by_week.items():
+        mean = lambda values: round(sum(values) / len(values), 1)
+        thin = len(days) < MIN_TIMING_DAYS
+        timing[week] = {
+            "first_meal_mins": None if thin else mean([f for f, _ in days]),
+            "last_meal_mins": None if thin else mean([l for _, l in days]),
+            "eating_window_hrs": None if thin else round(mean([l - f for f, l in days]) / 60, 2),
+            "meal_days": len(days),
+            "total_meals": meals_per_week.get(week, 0),
+        }
+    return timing
+
+
+TIMING_FIELDS = ("first_meal_mins", "last_meal_mins", "eating_window_hrs", "meal_days", "total_meals")
+
+
+def merge_timing(rows, timing):
+    """Every journal row carries the timing columns, present or not, so a week
+    whose meals were deleted is cleared rather than left showing stale times."""
+    for row in rows:
+        stats = timing.get(row["week"])
+        for field in TIMING_FIELDS:
+            row[field] = stats[field] if stats else None
+    return sum(1 for row in rows if row["first_meal_mins"] is not None)
+
+
 def upsert_supabase_rows(supabase_url, secret_key, rows, table="journal_entries", on_conflict="user_id,week"):
     headers = {
         "apikey": secret_key,
@@ -311,6 +417,31 @@ def main():
     rows = list(seen.values())
     if len(rows) != len(seen):
         print(f"Deduplicated to {len(rows)} unique weeks.", flush=True)
+
+    # Individual meals, so the dashboard can drill into a weekly rollup and so
+    # the weekly first/last meal times can be derived — Notion has rollups for
+    # the meal counts but none for timing. Fetched before the journal upsert
+    # because the timing columns ride along on those same rows. Skipped rather
+    # than fatal if the relation cannot be resolved: the weekly numbers are the
+    # primary sync and should not fail with the detail.
+    print("Fetching food log entries from Notion...", flush=True)
+    food_db = food_log_database_id(required["NOTION_TOKEN"], required["NOTION_JOURNAL_DB_ID"])
+    meals = []
+    if food_db:
+        meals = fetch_food_log_rows(required["NOTION_TOKEN"], food_db, required["KANBAN_USER_ID"])
+        print(f"Fetched {len(meals)} food log entries.", flush=True)
+    else:
+        print("Could not resolve the Food Log database from the journal relation; skipping meals.")
+
+    if meals:
+        overrides = fetch_time_overrides(
+            required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], required["KANBAN_USER_ID"]
+        )
+        if overrides:
+            print(f"Applying {len(overrides)} corrected meal time(s) from the dashboard.", flush=True)
+        timed_weeks = merge_timing(rows, weekly_meal_timing(meals, overrides))
+        print(f"Derived meal timing for {timed_weeks} weeks.", flush=True)
+
     if "--dry-run" in sys.argv:
         print("Dry run complete; Supabase was not changed.")
         return
@@ -322,16 +453,8 @@ def main():
     )
     print(f"Upserted {synced} journal entries into Supabase.")
 
-    # Individual meals, so the dashboard can drill into a weekly rollup. Skipped
-    # rather than fatal if the relation cannot be resolved — the weekly numbers
-    # above are the primary sync and should not fail with it.
-    print("Fetching food log entries from Notion...", flush=True)
-    food_db = food_log_database_id(required["NOTION_TOKEN"], required["NOTION_JOURNAL_DB_ID"])
-    if not food_db:
-        print("Could not resolve the Food Log database from the journal relation; skipped.")
+    if not meals:
         return
-    meals = fetch_food_log_rows(required["NOTION_TOKEN"], food_db, required["KANBAN_USER_ID"])
-    print(f"Fetched {len(meals)} food log entries.", flush=True)
     synced_meals = upsert_supabase_rows(
         required["SUPABASE_URL"],
         required["SUPABASE_SECRET_KEY"],

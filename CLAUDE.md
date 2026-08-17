@@ -25,7 +25,8 @@ Auth: Supabase email+password (single user). Anon publishable key is committed t
 | `run_sql.py` | Runs arbitrary SQL via Supabase Management API. Uses `SUPABASE_ACCESS_TOKEN` from `.env`. |
 | `set_password.py` | One-shot admin-API call to set the kanban user's password. |
 | `import_to_supabase.py` | One-time Notion → Supabase importer. Already run; preserved for reference. |
-| `sync_journal_to_supabase.py` | Idempotent Notion Logging Journal → Supabase sync. Used locally and by GitHub Actions. |
+| `sync_journal_to_supabase.py` | Idempotent Notion Logging Journal → Supabase sync. Also syncs individual meals and derives weekly meal timing. Used locally and by GitHub Actions. |
+| `scriptable/agentos-food.js` | iOS Scriptable home-screen widget. Reads the current week's meals straight from Supabase (password grant, credentials in the iOS keychain) and frames them as budget remaining. Read-only. |
 | `supabase/migrations/` | Checked-in database migrations, including the authenticated `journal_entries` table and RLS policy. |
 | `server.py` | **Legacy.** Notion-backed REST server on port 5173. Personal Intelligence no longer depends on it after the journal migration. |
 | `.env` | Secrets (gitignored): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `KANBAN_USER_ID`, `SUPABASE_ACCESS_TOKEN`, plus legacy Notion vars. |
@@ -60,6 +61,30 @@ completed_at timestamptz             -- auto-set by `set_completed_at` trigger o
 
 `timing` and `effort` are CHECK-constrained enums. `status` is too (enforced in app code; constraint may or may not exist server-side). `description` is rendered as markdown in the drawer via `marked` + `DOMPurify` (CDN-loaded).
 
+## Food log & nutrition
+
+Two tables, two grains. `journal_entries` holds the **weekly** rollup; `food_log_entries` holds the **individual meals** behind it so the dashboard can drill from "3 non-profile meals" into which three.
+
+Most weekly food columns are Notion rollups copied verbatim (`FL Non Profile` → `non_profile_meals`, `FL DCP` → `dcp_meals`, `FL Cooked` → `cooked_meals`). Notion still has `FL Drinks`, `FL Milk Drinks`, `FL Total Cals` and `FL Total Protein` that nothing reads yet.
+
+**Meal timing is derived, not synced.** Notion has no rollup for it, so `weekly_meal_timing()` computes `first_meal_mins`, `last_meal_mins`, `eating_window_hrs`, `meal_days` and `total_meals` from the meal rows. Stored as minutes after local midnight so the numeric chart machinery can draw them; the UI formats back to a clock.
+
+- **An eating day runs 04:00 → 03:59.** A 00:30 snack closes the night before rather than opening the next day. `EATING_DAY_START_MIN` in `sync_journal_to_supabase.py` and the same constant in `index.html` and `scriptable/agentos-food.js` **must agree** — if they drift, the charts and the drill-down will disagree about which day a late meal belongs to.
+- Times are resolved to `FOOD_LOG_TZ` (default `America/Los_Angeles`). Notion returns a real UTC offset on every timed entry; date-only entries are skipped rather than guessed at as midnight.
+- Weeks with fewer than `MIN_TIMING_DAYS` (3) logged days report coverage but no averages — one 20:00 meal would otherwise read as a 20:00 first meal and a 0-hour window. Same spirit as the `MIN_PLAUSIBLE_DAILY_CALS` floor on calories.
+
+**`is_cooked` is just `Source == "Home"`** in Notion — nothing about cooking. A hot chocolate counts. The UI says so rather than implying effort, and pairs the count with `total_meals` as a denominator.
+
+### Corrected meal times
+
+The frontend is static on GitHub Pages, so it cannot hold the Notion token and write a fix upstream. Instead:
+
+- The sync owns `eaten_at` and **never** writes `eaten_at_override`.
+- Everything that reads a time uses `coalesce(eaten_at_override, eaten_at)` — in the drill-down, and in the sync's own timing derivation (`fetch_time_overrides`), so a correction is not undone by the next run.
+- `food_log_entries` has an update policy for `authenticated` plus a `before update` trigger (`food_log_entries_guard_client_update`) that pins every other column to its old value for browser sessions. `service_role` (the sync) keeps full write access. The policy alone cannot scope an update to one column.
+
+An edit shows immediately in the drill-down (computed client-side) and reaches the weekly charts on the next sync.
+
 ## Views & filters
 
 The toolbar exposes both **filters** (Context / Due / Age — multi-pill filter pattern) and a **group-by toggle** (Status / Due / Age / Context). They're independent: filters always AND-narrow the visible set, group-by chooses which dimension drives the columns.
@@ -74,6 +99,16 @@ Two weekly rollovers run client-side in `loadTasks()` — they fire once per wee
 - **Next Week → This Week** on/after Monday 00:00 (`maybeNextWeekRollover`, key `kanban.lastNextWeekRoll`).
 
 There is no server-side scheduler; whichever machine opens the app first that week runs the rollover, and it's idempotent across devices.
+
+## Scheduled sync (GitHub Actions)
+
+`.github/workflows/sync-journal.yml` runs `sync_journal_to_supabase.py` daily at 13:17 UTC. It needs five repo secrets — `NOTION_TOKEN`, `NOTION_JOURNAL_DB_ID`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `KANBAN_USER_ID` — mirroring `.env`. Missing any of them makes the script exit on its own `Missing environment variables:` guard, which reads as a generic step failure in the Actions UI.
+
+Check it is actually working before trusting the dashboard's freshness:
+
+```bash
+gh run list --workflow sync-journal.yml --limit 5
+```
 
 ## Related repos
 
@@ -96,6 +131,7 @@ python3 -m http.server 8000              # then open http://localhost:8000
 
 # Refresh Personal Intelligence data from Notion
 python3 sync_journal_to_supabase.py
+python3 sync_journal_to_supabase.py --dry-run   # fetch and derive, write nothing
 
 # Run a SQL migration / one-off query
 python3 run_sql.py "SELECT count(*) FROM tasks;"
@@ -113,4 +149,4 @@ python3 set_password.py
 - **MCP tool changes need a Claude Code reload** to take effect — the server is spawned at session start.
 - **Don't echo `SUPABASE_SECRET_KEY` or `SUPABASE_ACCESS_TOKEN`** in chat or commits. They live only in `.env`.
 - **Frontend is fully static** — no build step, no bundler. Edit `index.html` and refresh the browser.
-- **Schema changes**: write the SQL, run via `run_sql.py`, update `mcp_server.py` field lists, update `index.html` (rowToTask / patchToRow / drawer / badges / filters) in the same commit.
+- **Schema changes**: write the SQL **into `supabase/migrations/`**, apply it with `python3 run_sql.py < supabase/migrations/<file>.sql`, update `mcp_server.py` field lists, update `index.html` (rowToTask / patchToRow / drawer / badges / filters) in the same commit. `non_profile_meals` and `dcp_meals` were added with an ad-hoc `run_sql.py` call and exist in the database but in no migration file — don't add to that drift.

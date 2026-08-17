@@ -3,7 +3,12 @@ name: Sync journal to Supabase
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 13 * * *"
+    # Every three hours. A once-daily sync was fine when the dashboard was the
+    # only consumer, but the Scriptable widget is meant to nudge *during* the
+    # day and is only ever as fresh as the last run. Public repos get unlimited
+    # Actions minutes, and the sync is idempotent, so the extra runs cost
+    # nothing but a few seconds of Notion API traffic.
+    - cron: "17 */3 * * *"
 
 permissions:
   contents: read

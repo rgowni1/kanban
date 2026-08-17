@@ -1422,6 +1422,16 @@
   .meal-macros b { display: block; color: var(--text); font-size: 12.5px; font-weight: 650; line-height: 1.2; }
   .meal-mac { display: block; margin-top: 1px; color: var(--muted); font-size: 9.5px; }
   .meal-over { color: var(--viz-fuel); font-weight: 650; }
+  .meal-edge { color: var(--viz-fuel); font-weight: 700; }
+  .meal-timebox { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
+  .meal-time-input { width: 96px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .meal-time-input:hover { border-color: var(--viz-fuel); }
+  .meal-time-input:focus { outline: none; border-color: var(--viz-fuel); box-shadow: 0 0 0 2px color-mix(in srgb, var(--viz-fuel) 22%, transparent); }
+  .meal-time-input:disabled { opacity: .5; }
+  .meal-timebox.edited .meal-time-input { border-color: var(--viz-fuel); }
+  .meal-timebox.failed .meal-time-input { border-color: #d94040; }
+  .meal-time-reset { padding: 3px 6px; border: none; border-radius: 5px; background: transparent; color: var(--muted); font-size: 9.5px; cursor: pointer; }
+  .meal-time-reset:hover { background: var(--panel); color: var(--text); }
   .meal-empty { padding: 26px 4px; text-align: center; color: var(--text); font-size: 13px; }
   .meal-empty span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
   .bi-toggle {
@@ -4181,6 +4191,16 @@
       callout: m => ['carbs_g'],
       none: 'No desserts or pastries',
     },
+    cooked: {
+      emoji: '🏠',
+      title: 'Cooked at home',
+      // Worth stating plainly: Notion's rule is `Source == "Home"`, nothing
+      // more, so a hot chocolate counts exactly as much as a roast dinner.
+      def: 'Everything logged with <b>Source = Home</b>. That is the whole rule — a hot chocolate or a handful of trail mix counts as cooked, so read this as <b>eaten in</b> rather than as cooking effort.',
+      match: m => m.is_cooked,
+      callout: m => ['protein_g'],
+      none: 'Nothing eaten at home',
+    },
   };
 
   async function openMealDrill(kind, days = 8) {
@@ -4234,13 +4254,18 @@
             }).join('');
         }).join('');
         const kcal = hits.reduce((s, m) => s + (Number(m.calories) || 0), 0);
-        const out = hits.filter(m => m.source === 'Restaurant').length;
         const stat = (v, l) => `<span class="meal-stat"><b>${v}</b>${l}</span>`;
+        // Every hit in the cooked drill is Home by definition, so "0 out" would
+        // be dead space; the share of the window's meals is the real question.
+        const inWindow = meals.filter(m => m.eaten_at && new Date(m.eaten_at) >= cutoff).length;
+        const lastStat = kind === 'cooked'
+          ? stat(`${Math.round(hits.length / Math.max(1, inWindow) * 100)}%`, 'of meals')
+          : stat(hits.filter(m => m.source === 'Restaurant').length, '🍴 out');
         body = `<div class="meal-tally">
             ${stat(hits.length, kind === 'dcp' ? 'items' : 'meals')}
             ${stat(`${byDay.size}/${days}`, 'days')}
             ${stat(kcal.toLocaleString(), 'kcal')}
-            ${stat(out, '🍴 out')}
+            ${lastStat}
           </div><ul class="meal-list">${rows}</ul>`;
       }
     }
@@ -4256,6 +4281,181 @@
       </div>`;
     host.addEventListener('click', e => { if (e.target === host) close(); });
     host.querySelector('.meal-x').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(host);
+  }
+
+  // === Meal timing =========================================================
+  // An eating day runs 04:00 → 03:59, matching MIN/EATING_DAY_START_MIN in
+  // sync_journal_to_supabase.py: a 00:30 snack closes the night before rather
+  // than opening the next day at half past midnight. The two implementations
+  // have to agree or the drill-down and the charts will disagree about which
+  // day a late meal belongs to.
+  const EATING_DAY_START_MIN = 4 * 60;
+  // The sync owns `eaten_at`; a correction made here lands in
+  // `eaten_at_override` so the next sync cannot silently revert it.
+  const mealTime = m => m.eaten_at_override || m.eaten_at;
+  const eatingSlot = m => {
+    const iso = mealTime(m);
+    if (!iso) return null;
+    const at = new Date(iso);
+    if (isNaN(at)) return null;
+    let minutes = at.getHours() * 60 + at.getMinutes();
+    const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+    if (minutes < EATING_DAY_START_MIN) { day.setDate(day.getDate() - 1); minutes += 24 * 60; }
+    return { day, minutes, at };
+  };
+  const clockOf = minutes => {
+    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
+    const h = Math.floor(norm / 60);
+    return `${h % 12 || 12}:${String(norm % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  };
+  const hhmm = minutes => {
+    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(norm / 60)).padStart(2, '0')}:${String(norm % 60).padStart(2, '0')}`;
+  };
+
+  // Write a corrected time back. The eating-day is held fixed and only the
+  // clock moves, so retyping "1:00 AM" on a Tuesday night keeps that meal on
+  // Tuesday instead of teleporting it 23 hours backwards.
+  async function saveMealTime(meal, value) {
+    const [h, min] = String(value).split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+    const slot = eatingSlot(meal);
+    if (!slot) return null;
+    const at = new Date(slot.day);
+    at.setHours(h, min, 0, 0);
+    if (h * 60 + min < EATING_DAY_START_MIN) at.setDate(at.getDate() + 1);
+    const iso = at.toISOString();
+    const { error } = await supabase
+      .from('food_log_entries')
+      .update({ eaten_at_override: iso })
+      .eq('id', meal.id);
+    if (error) return null;
+    meal.eaten_at_override = iso;   // keep the cached copy honest
+    return iso;
+  }
+
+  async function clearMealTime(meal) {
+    const { error } = await supabase
+      .from('food_log_entries')
+      .update({ eaten_at_override: null })
+      .eq('id', meal.id);
+    if (error) return false;
+    meal.eaten_at_override = null;
+    return true;
+  }
+
+  async function openTimingDrill(days = 8) {
+    const meals = await fetchMeals();
+    const host = document.createElement('div');
+    host.className = 'meal-backdrop';
+    const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - (days - 1));
+
+    const render = () => {
+      if (!meals) {
+        return `<div class="meal-empty">Could not load the food log.<br><span>Run <code>python3 sync_journal_to_supabase.py</code> and try again.</span></div>`;
+      }
+      const byDay = new Map();
+      for (const m of meals) {
+        const slot = eatingSlot(m);
+        if (!slot || slot.day < cutoff) continue;
+        const key = slot.day.getTime();
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push({ meal: m, ...slot });
+      }
+      if (!byDay.size) return `<div class="meal-empty">No meals logged in the last ${days} days.</div>`;
+
+      const dayList = [...byDay.entries()].sort((a, b) => b[0] - a[0]);
+      const spans = dayList.map(([, list]) => {
+        const mins = list.map(x => x.minutes);
+        return { first: Math.min(...mins), last: Math.max(...mins) };
+      });
+      const mean = xs => xs.reduce((s, v) => s + v, 0) / xs.length;
+      const avgFirst = mean(spans.map(s => s.first));
+      const avgLast = mean(spans.map(s => s.last));
+      const stat = (v, l) => `<span class="meal-stat"><b>${v}</b>${l}</span>`;
+
+      const rows = dayList.map(([key, list]) => {
+        list.sort((a, b) => a.minutes - b.minutes);
+        const first = list[0], last = list[list.length - 1];
+        const label = new Date(key).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const window = list.length > 1 ? `${((last.minutes - first.minutes) / 60).toFixed(1)}h window` : 'single meal';
+        return `<li class="meal-day"><span>${escapeHtml(label)}</span><span>${escapeHtml(window)}</span></li>` +
+          list.map(({ meal, minutes }) => {
+            const edge = meal === first.meal ? 'first' : meal === last.meal ? 'last' : '';
+            const edited = meal.eaten_at_override ? ' edited' : '';
+            return `<li class="meal-row meal-timed" data-meal-id="${escapeHtml(meal.id)}">
+                <span class="meal-emoji">${mealEmoji(meal.name)}</span>
+                <span class="meal-body">
+                  <span class="meal-name" title="${escapeHtml(meal.name)}">${escapeHtml(meal.name)}</span>
+                  <span class="meal-meta">${[
+                    edge ? `<b class="meal-edge">${edge === 'first' ? '🌅 first' : '🌙 last'}</b>` : '',
+                    MEAL_TYPE_EMOJI[meal.meal_type] ? `${MEAL_TYPE_EMOJI[meal.meal_type]} ${escapeHtml(meal.meal_type)}` : '',
+                    SOURCE_EMOJI[meal.source] ? `${SOURCE_EMOJI[meal.source]} ${escapeHtml(meal.source)}` : '',
+                    meal.eaten_at_override ? '✎ corrected' : '',
+                  ].filter(Boolean).join(' · ')}</span>
+                </span>
+                <span class="meal-timebox${edited}">
+                  <input type="time" class="meal-time-input" value="${hhmm(minutes)}" aria-label="Time for ${escapeHtml(meal.name)}">
+                  ${meal.eaten_at_override ? `<button type="button" class="meal-time-reset" title="Revert to the time in Notion">revert</button>` : ''}
+                </span>
+              </li>`;
+          }).join('');
+      }).join('');
+
+      return `<div class="meal-tally">
+          ${stat(clockOf(avgFirst), 'avg first')}
+          ${stat(clockOf(avgLast), 'avg last')}
+          ${stat(`${((avgLast - avgFirst) / 60).toFixed(1)}h`, 'window')}
+          ${stat(`${dayList.length}/${days}`, 'days')}
+        </div><ul class="meal-list">${rows}</ul>`;
+    };
+
+    const paint = () => {
+      host.querySelector('.meal-modal').innerHTML = shell(render());
+      wire();
+    };
+    const shell = body => `
+        <div class="meal-head">
+          <h3>🕰️ Meal timing</h3>
+          <span class="meal-range">last ${days} days</span>
+          <button type="button" class="meal-x" aria-label="Close">✕</button>
+        </div>
+        <p class="meal-def">First and last meal of each <b>eating day</b>, which runs 4am to 4am — a midnight snack closes the night before. Times are read from Notion; <b>edit one here</b> to correct it. Corrections stick, and the weekly charts pick them up on the next sync.</p>
+        ${body}`;
+
+    const wire = () => {
+      host.querySelector('.meal-x').addEventListener('click', close);
+      host.querySelectorAll('.meal-time-input').forEach(input => {
+        input.addEventListener('change', async () => {
+          const row = input.closest('[data-meal-id]');
+          const meal = meals.find(m => m.id === row.dataset.mealId);
+          if (!meal) return;
+          input.disabled = true;
+          const saved = await saveMealTime(meal, input.value);
+          input.disabled = false;
+          if (!saved) { input.closest('.meal-timebox').classList.add('failed'); return; }
+          paint();
+        });
+      });
+      host.querySelectorAll('.meal-time-reset').forEach(button => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('[data-meal-id]');
+          const meal = meals.find(m => m.id === row.dataset.mealId);
+          if (meal && await clearMealTime(meal)) paint();
+        });
+      });
+    };
+
+    host.innerHTML = `<div class="meal-modal" role="dialog" aria-modal="true" aria-label="Meal timing">${shell(render())}</div>`;
+    host.addEventListener('click', e => { if (e.target === host) close(); });
+    wire();
     document.addEventListener('keydown', onKey);
     document.body.appendChild(host);
   }
@@ -4475,6 +4675,7 @@
     const latestBody   = latestWith('weekly_weight');
     const latestLearn  = latestWith('articles');
     const latestFood   = latestWith('consumed_cals');
+    const latestTiming = latestWith('first_meal_mins');
     const avgLastLogged = (key, count = 8) => avgOf(entries.filter(e => e[key] != null).slice(-count), key);
     const avgSlp8 = avgLastLogged('slp_score');
     const avgSlpHrs8 = avgLastLogged('slp_hrs');
@@ -4511,6 +4712,9 @@
       garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
       avg_protein:'Notion food log', calorie_deficit:'Notion formula',
       non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
+      cooked_meals:'Notion food log rollup', total_meals:'Notion food log',
+      first_meal_mins:'Derived in sync from meal times', last_meal_mins:'Derived in sync from meal times',
+      eating_window_hrs:'Derived in sync from meal times',
       articles:'Readwise via oura.py → Notion', podcasts:'Readwise via oura.py → Notion'
     };
     const sourceFor = key => sourceByKey[key] || 'Notion journal';
@@ -4591,6 +4795,11 @@
       {key:'avg_protein',   label:'Protein',       fmt:fmtInt, unit:'g',    inverse:false, hue:'fuel'},
       // Treated as lower-is-better: off-profile meals read as drift from the plan.
       {key:'non_profile_meals', label:'Non-profile meals', fmt:fmtInt, unit:'', inverse:true, hue:'fuel'},
+      {key:'cooked_meals',  label:'Cooked at home', fmt:fmtInt, unit:'',    inverse:false, hue:'fuel'},
+      // A shorter eating window is the direction of travel, so this reads as
+      // lower-is-better. First/last meal are deliberately absent: a "12% above
+      // usual" on a clock time is not a sentence anyone can act on.
+      {key:'eating_window_hrs', label:'Eating window', fmt:fmt1, unit:'hrs', inverse:true, hue:'fuel'},
       {key:'stress',        label:'Stress',        fmt:fmtInt, unit:'',     inverse:true,  hue:'mind'},
       {key:'articles',      label:'Articles',      fmt:fmtInt, unit:'',     inverse:false, hue:'mind'},
     ];
@@ -4695,6 +4904,7 @@
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
           ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
+          ${card({label:'Meal timing', key:'eating_window_hrs', current:latestTiming, value:latestTiming?`${formatClock(latestTiming.first_meal_mins)} → ${formatClock(latestTiming.last_meal_mins)}`:'Not logged', sub:latestTiming?`${fmt1(latestTiming.eating_window_hrs)}-hour window across ${fmtInt(latestTiming.meal_days)} logged days`:'Log meals with a time to derive this', color:'var(--viz-fuel)', inverse:true, comparisonLabel:latestTiming?`Average of the first and last meal on each of the ${fmtInt(latestTiming.meal_days)} days logged that week`:''})}
           ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'var(--viz-mind)'})}
         </div>
 
@@ -4733,6 +4943,15 @@
           ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
           ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under 20% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
+          ${chartCard(isAgg?'Total cooked at home':'Cooked at home', `🏠 Logged with Source = Home${isAgg?' · total for the period':' · per week'}`, 'cooked_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'cooked')}
+        </div>
+
+        <div class="bi-section-heading"><h3>Meal timing</h3><p>${periodLbl} · averaged across the days that were logged</p></div>
+        <div class="bi-grid">
+          ${chartCard('First meal', '🌅 Average time the first meal of the day was eaten', 'first_meal_mins', 'var(--viz-fuel)', formatClock, false, '', null, 'timing')}
+          ${chartCard('Last meal', '🌙 Average time the last meal of the day was eaten', 'last_meal_mins', 'var(--viz-fuel)', formatClock, false, '', null, 'timing')}
+          ${chartCard('Eating window', 'Hours between the first and last meal', 'eating_window_hrs', 'var(--viz-fuel)', v=>(+v).toFixed(1), false, 'hours', null, 'timing')}
+          ${chartCard(isAgg?'Total meals logged':'Meals logged', `Rows in the food log${isAgg?' · total for the period':' · per week'}`, 'total_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'timing')}
         </div>
 
         <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
@@ -4765,7 +4984,9 @@
     });
 
     el.querySelectorAll('[data-drill]').forEach(card => {
-      card.addEventListener('dblclick', () => openMealDrill(card.dataset.drill, 8));
+      card.addEventListener('dblclick', () => card.dataset.drill === 'timing'
+        ? openTimingDrill(8)
+        : openMealDrill(card.dataset.drill, 8));
     });
 
     el.querySelectorAll('[data-biperiod]').forEach(btn => {
