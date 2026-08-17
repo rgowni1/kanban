@@ -1363,11 +1363,6 @@
   .bi-trend-chart { display: block; width: 100%; height: auto; min-height: 154px; overflow: visible; }
   .bi-grid-line { stroke: var(--border); stroke-width: 1; }
   .bi-axis-label { fill: var(--muted); font: 9px var(--sans); }
-  .bi-trend-area { opacity: .09; }
-  .bi-trend-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-  /* Bridges an unlogged stretch: deliberately not the solid line, so a gap in
-     the record never reads as a measured trend. */
-  .bi-trend-gap { fill: none; stroke-width: 1.5; stroke-dasharray: 2 4; opacity: .32; stroke-linecap: round; }
   .bi-baseline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .5; }
   /* A goal line, not a description of the data — longer dashes and full ink so
      it never reads as the median. Only one of the two is ever drawn. */
@@ -1377,8 +1372,6 @@
   .bi-target-label { fill: var(--text); opacity: .75; font-weight: 600; }
   .bi-chart-coverage { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
   .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
-  .bi-trend-dot { stroke: var(--panel); stroke-width: 2; }
-  .bi-chart-hit { fill: transparent; cursor: crosshair; }
   .bi-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
   .bi-bar:hover { opacity: 1; }
   .bi-tooltip {
@@ -4657,135 +4650,72 @@
       return data.slice(first, last + 1);
     }
 
-    // Bars, for any period. Was quarter-only; the shape suits every countable
-    // metric, and for a sparse series it is the honest one -- an unlogged week
-    // is simply an absent bar, where a line invents a segment across the gap.
+    // Every chart on this page is a bar chart. Bars beat lines for this data:
+    // the series are sparse (six of sixteen weeks logged is normal here), and a
+    // line has to invent a segment across every unlogged week, which still
+    // reads as a trend even drawn dotted. A missing bar is just missing.
+    //
+    // Two baselines, because "start at zero" is right for a magnitude and
+    // useless for a level. Calories, minutes and meal counts are magnitudes --
+    // the bar's length *is* the value, so it grows from zero. Weight, RHR, HRV
+    // and sleep score are levels that live in a narrow band far from zero; from
+    // a zero baseline they are a wall of identical bars. Those grow from a
+    // zoomed floor instead. The floor is always printed as the bottom axis
+    // label, so a truncated baseline is stated rather than hidden.
     function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
-      // Bars always start at zero: their length *is* the value, so a truncated
-      // axis would overstate the difference between quarters. (Lines may sit on
-      // a zoomed axis — position, not length, carries their meaning.)
-      const vals = points.map(p => p.v), rawMax = Math.max(...vals, target ?? -Infinity), rawMin = Math.min(0, ...vals);
-      const min = rawMin, max = rawMax + Math.max((rawMax - rawMin) * .08, 1);
-      const range = Math.max(.001, max - min), W = 640, H = 190, L = 38, R = target != null ? 62 : 10, T = 10, B = 28;
-      const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, slot * .62);
+      const vals = points.map(p => p.v);
+      const rawMax = Math.max(...vals, target ?? -Infinity);
+      const rawMin = Math.min(...vals, target ?? Infinity);
+      // A level series with no spread still needs a visible band, or every bar
+      // lands exactly on the floor with zero height.
+      const spread = Math.max(rawMax - rawMin, Math.abs(rawMax) * .02, .001);
+      const min = zeroBase ? Math.min(0, rawMin) : rawMin - spread * .45;
+      const max = rawMax + Math.max((rawMax - min) * .08, spread * .12, 1);
+      const range = Math.max(.001, max - min);
+      const median = medianOf(data, key);
+      const showRef = target != null || (points.length >= 4 && median != null);
+      const W = 640, H = 190, L = 38, R = showRef ? 62 : 10, T = 10, B = 28;
+      const plotW = W-L-R, slot = plotW / Math.max(1, data.length), barW = Math.min(38, Math.max(2, slot * .62));
       const y = v => T + (1 - (v-min)/range) * (H-T-B);
       const grid = [0,.5,1].map(frac => {
         const gy = T + frac*(H-T-B), gv = max-frac*range;
         return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line><text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
       }).join('');
-      // Anchor every bar to the zero line, so a negative quarter (a calorie
-      // surplus, say) grows downward instead of being drawn as a positive bar.
-      const yZero = y(0);
-      const zeroRule = rawMin < 0 ? `<line class="bi-grid-line" x1="${L}" y1="${yZero.toFixed(1)}" x2="${W-R}" y2="${yZero.toFixed(1)}"></line>` : '';
-      const targetRule = target != null && target >= min && target <= max
-        ? `<line class="bi-target" x1="${L}" y1="${y(target).toFixed(1)}" x2="${W-R}" y2="${y(target).toFixed(1)}"></line>
-           <text class="bi-ref-label bi-target-label" x="${W-R+6}" y="${Math.max(T+7, y(target)+2.5).toFixed(1)}" text-anchor="start">goal ${valFmt(target)}</text>` : '';
+      // Bars grow from the baseline. On a zero-based chart that is the zero
+      // line, so a negative reading (a calorie surplus) grows downward; on a
+      // zoomed one it is the bottom of the plot.
+      const yBase = zeroBase ? y(Math.max(min, 0)) : H - B;
+      const zeroRule = zeroBase && min < 0
+        ? `<line class="bi-grid-line" x1="${L}" y1="${yBase.toFixed(1)}" x2="${W-R}" y2="${yBase.toFixed(1)}" stroke-opacity=".85"></line>` : '';
+      // A target supersedes the median: two dashed rules in one plot is a
+      // riddle, and where there is a goal the goal is the reference that matters.
+      const refLine = (cls, value, text) => {
+        if (value == null || value < min || value > max) return '';
+        const ry = y(value), ty = Math.min(H - B - 1, Math.max(T + 7, ry + 2.5));
+        return `<line class="${cls}" x1="${L}" y1="${ry.toFixed(1)}" x2="${W-R}" y2="${ry.toFixed(1)}"></line>
+          <text class="bi-ref-label ${cls}-label" x="${W-R+6}" y="${ty.toFixed(1)}" text-anchor="start">${escapeHtml(text)}</text>`;
+      };
+      const reference = target != null
+        ? refLine('bi-target', target, `goal ${valFmt(target)}`)
+        : points.length < 4 ? '' : refLine('bi-baseline', median, `median ${valFmt(median)}`);
       const bars = points.map(p => {
         const cx = L + (p.i+.5)*slot, vy = y(p.v);
-        const top = Math.min(vy, yZero), height = Math.max(2, Math.abs(vy - yZero));
-        const tooltip = escapeHtml(`${p.label}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<rect class="bi-bar" x="${cx-barW/2}" y="${top.toFixed(1)}" width="${barW}" height="${height.toFixed(1)}" rx="4" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
+        const top = Math.min(vy, yBase), height = Math.max(2, Math.abs(vy - yBase));
+        const periodLabel = _biPeriod === 'week' ? `Week of ${p.label}` : p.label;
+        const tooltip = escapeHtml(`${periodLabel}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
+        return `<rect class="bi-bar" x="${(cx-barW/2).toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${height.toFixed(1)}" rx="${Math.min(4, barW/2).toFixed(1)}" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
       }).join('');
       // Roughly eight labels regardless of span; every other bar is unreadable
       // once the slider is dragged out to a year.
       const labelEvery = Math.max(1, Math.ceil(data.length / 8));
-      const labels = data.map((e,i) => i%labelEvery===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
-      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} bars">${grid}${zeroRule}${targetRule}${bars}${labels}</svg>`;
+      const labels = data.map((e,i) => i%labelEvery===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${(L+(i+.5)*slot).toFixed(1)}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} bars">${grid}${zeroRule}${reference}${bars}${labels}</svg>`;
     }
 
-    function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
-      // `zeroBase` already marks the countable metrics -- calories, minutes,
-      // meals, articles -- the ones whose value *is* a magnitude. Those read
-      // better as bars. Level metrics (weight, RHR, HRV, sleep score, TDEE,
-      // meal times) keep the line: they sit on a zoomed axis where position
-      // carries the meaning, and as bars they would be a wall of near-equal
-      // heights. Quarters stay all-bars, as before.
-      if (_biPeriod === 'quarter' || zeroBase) return makeBarChart(data, key, color, valFmt, zeroBase, unit, target);
-      data = trimEmptyEdges(data, key);
-      const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
-      if (points.length < 2) return `<div class="bi-empty-chart">Not enough data to chart yet</div>`;
-      const vals = points.map(p => p.v);
-      // The scale has to reach the target, or a goal you are short of sits off
-      // the top of the plot — exactly the weeks where seeing it matters.
-      const rawMin = Math.min(...vals, target ?? Infinity), rawMax = Math.max(...vals, target ?? -Infinity);
-      const padding = zeroBase ? Math.max((rawMax - Math.min(0, rawMin)) * .08, 1) : Math.max((rawMax - rawMin) * .22, Math.abs(rawMax) * .025, 1);
-      // Zero-basing must still make room for genuinely negative readings — a
-      // calorie surplus is a real value, not something to clip off the plot —
-      // but only when they exist. Padding below an all-positive series would
-      // print an impossible floor like "-10 minutes" on the axis.
-      const min = zeroBase ? (rawMin < 0 ? rawMin - padding : 0) : Math.max(0, rawMin - padding);
-      const max = rawMax + padding;
-      const range = Math.max(.001, max - min);
-      // R leaves a gutter for the reference-line label. Naming it outside the
-      // plot is the only placement that cannot collide with the line it labels.
-      const W = 640, H = 190, L = 38, R = 62, T = 10, B = 28;
-      const x = i => L + (i / Math.max(1, data.length - 1)) * (W - L - R);
-      const y = v => T + (1 - (v - min) / range) * (H - T - B);
-      // Split into runs of consecutive logged periods. Drawing one path through
-      // every point would bridge unlogged stretches as if they were measured —
-      // a three-month gap in the food log reads as a smooth climb otherwise.
-      const segments = points.reduce((acc, p) => {
-        const last = acc.at(-1);
-        if (last && p.i === last.at(-1).i + 1) last.push(p); else acc.push([p]);
-        return acc;
-      }, []);
-      const at = p => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`;
-      const line = segments.filter(s => s.length > 1)
-        .map(s => `<path class="bi-trend-line" d="M ${s.map(at).join(' L ')}" style="stroke:${color}"></path>`).join('');
-      // Only fill under an unbroken run. Filling each fragment separately puts a
-      // vertical cliff at every gap edge, which reads as a plunge to zero.
-      const area = segments.length > 1 ? '' : segments.filter(s => s.length > 1)
-        .map(s => `<path class="bi-trend-area" d="M ${s.map(at).join(' L ')} L ${x(s.at(-1).i).toFixed(1)},${H-B} L ${x(s[0].i).toFixed(1)},${H-B} Z" fill="url(#grad-${key}-${_biPeriod})"></path>`).join('');
-      const gaps = segments.slice(1).map((s, idx) => {
-        const from = segments[idx].at(-1), missing = s[0].i - from.i - 1;
-        const label = escapeHtml(`${missing} ${_biPeriod}${missing === 1 ? '' : 's'} not logged|No data between ${from.label} and ${s[0].label}`);
-        return `<path class="bi-trend-gap" d="M ${at(from)} L ${at(s[0])}" style="stroke:${color}"></path>
-          <line class="bi-chart-hit" x1="${x(from.i)}" y1="${y(from.v)}" x2="${x(s[0].i)}" y2="${y(s[0].v)}" stroke="transparent" stroke-width="16" data-tooltip="${label}"></line>`;
-      }).join('');
-      const grid = [0,.5,1].map(frac => {
-        const gy = T + frac * (H-T-B);
-        const gv = max - frac * range;
-        return `<line class="bi-grid-line" x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}"></line>
-          <text class="bi-axis-label" x="${L-7}" y="${gy+3}" text-anchor="end">${valFmt(gv)}</text>`;
-      }).join('');
-      // Where the scale crosses zero, mark it — the sign of a calorie deficit is
-      // the whole story, and it is invisible against an arbitrary gridline.
-      const zeroRule = min < 0 && max > 0
-        ? `<line class="bi-grid-line" x1="${L}" y1="${y(0).toFixed(1)}" x2="${W-R}" y2="${y(0).toFixed(1)}" stroke-opacity=".85"></line>
-           <text class="bi-axis-label" x="${L-7}" y="${(y(0)+3).toFixed(1)}" text-anchor="end">0</text>` : '';
-      // A reference line turns "here is a squiggle" into "here is where you sit
-      // versus normal". Median, so one freak period does not move the baseline.
-      // The value is named in the card header — anywhere inside a 640×190 plot
-      // it collides with the line it is meant to be read against.
-      // A target supersedes the median: two dashed rules in one plot is a riddle,
-      // and when there is a goal the goal is the reference that matters.
-      const refLine = (cls, value, text) => {
-        const ry = y(value);
-        // Keep the label inside the canvas when the rule sits at the very edge.
-        const ty = Math.min(H - B - 1, Math.max(T + 7, ry + 2.5));
-        return `<line class="${cls}" x1="${L}" y1="${ry.toFixed(1)}" x2="${W-R}" y2="${ry.toFixed(1)}"></line>
-          <text class="bi-ref-label ${cls}-label" x="${W-R+6}" y="${ty.toFixed(1)}" text-anchor="start">${escapeHtml(text)}</text>`;
-      };
-      const median = medianOf(data, key);
-      const baseline = target != null && target >= min && target <= max
-        ? refLine('bi-target', target, `goal ${valFmt(target)}`)
-        : points.length < 4 || median == null ? ''
-        : refLine('bi-baseline', median, `median ${valFmt(median)}`);
-      const labelIndexes = [...new Set([0, Math.floor((data.length-1)/2), data.length-1])];
-      const labels = labelIndexes.map(i => `<text class="bi-axis-label" x="${x(i)}" y="${H-6}" text-anchor="${i===0?'start':i===data.length-1?'end':'middle'}">${escapeHtml(getLabel(data[i]))}</text>`).join('');
-      const dots = points.map((p, idx) => {
-        const periodLabel = _biPeriod === 'week' ? `Week of ${p.label}` : p.label;
-        const tooltip = escapeHtml(`${periodLabel}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<circle class="bi-trend-dot" cx="${x(p.i)}" cy="${y(p.v)}" r="${idx===points.length-1?4:2.5}" style="fill:${color}"></circle><circle class="bi-chart-hit" cx="${x(p.i)}" cy="${y(p.v)}" r="10" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></circle>`;
-      }).join('');
-      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} trend">
-        <defs><linearGradient id="grad-${key}-${_biPeriod}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${color}" stop-opacity=".9"/><stop offset="1" style="stop-color:${color}" stop-opacity="0"/></linearGradient></defs>
-        ${grid}${zeroRule}${baseline}${area}${gaps}${line}${dots}${labels}
-      </svg>`;
-    }
+    const makeTrendChart = makeBarChart;
 
     const periodData = buildPeriodData();
     const spanNoun   = BI_SPAN[_biPeriod].noun;
