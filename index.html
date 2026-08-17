@@ -1379,8 +1379,8 @@
   .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
   .bi-trend-dot { stroke: var(--panel); stroke-width: 2; }
   .bi-chart-hit { fill: transparent; cursor: crosshair; }
-  .bi-quarter-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
-  .bi-quarter-bar:hover { opacity: 1; }
+  .bi-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
+  .bi-bar:hover { opacity: 1; }
   .bi-tooltip {
     position: fixed; z-index: 1000; pointer-events: none; transform: translate(-50%, calc(-100% - 12px));
     max-width: 190px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.12);
@@ -4124,12 +4124,12 @@
   // period type, because 16 is a sensible number of weeks and a silly number
   // of quarters, and persisted so the choice survives a reload.
   const BI_SPAN = {
-    week:    { min: 4, max: 52, def: 16, noun: 'week' },
+    week:    { min: 4, max: 52, def: 8,  noun: 'week' },
     month:   { min: 3, max: 24, def: 12, noun: 'month' },
     quarter: { min: 4, max: 16, def: 12, noun: 'quarter' },
   };
   const _biSpan = (() => {
-    const fallback = { week: 16, month: 12, quarter: 12 };
+    const fallback = { week: 8, month: 12, quarter: 12 };
     try {
       const saved = JSON.parse(localStorage.getItem('kanban.biSpan') || '{}');
       for (const k of Object.keys(fallback)) {
@@ -4657,7 +4657,10 @@
       return data.slice(first, last + 1);
     }
 
-    function makeQuarterChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
+    // Bars, for any period. Was quarter-only; the shape suits every countable
+    // metric, and for a sparse series it is the honest one -- an unlogged week
+    // is simply an absent bar, where a line invents a segment across the gap.
+    function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
@@ -4684,14 +4687,23 @@
         const cx = L + (p.i+.5)*slot, vy = y(p.v);
         const top = Math.min(vy, yZero), height = Math.max(2, Math.abs(vy - yZero));
         const tooltip = escapeHtml(`${p.label}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<rect class="bi-quarter-bar" x="${cx-barW/2}" y="${top.toFixed(1)}" width="${barW}" height="${height.toFixed(1)}" rx="4" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
+        return `<rect class="bi-bar" x="${cx-barW/2}" y="${top.toFixed(1)}" width="${barW}" height="${height.toFixed(1)}" rx="4" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(p.label)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
       }).join('');
-      const labels = data.map((e,i) => i%2===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
-      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} quarterly bars">${grid}${zeroRule}${targetRule}${bars}${labels}</svg>`;
+      // Roughly eight labels regardless of span; every other bar is unreadable
+      // once the slider is dragged out to a year.
+      const labelEvery = Math.max(1, Math.ceil(data.length / 8));
+      const labels = data.map((e,i) => i%labelEvery===0 || i===data.length-1 ? `<text class="bi-axis-label" x="${L+(i+.5)*slot}" y="${H-6}" text-anchor="middle">${escapeHtml(getLabel(e))}</text>` : '').join('');
+      return `<svg class="bi-trend-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(key.replaceAll('_',' '))} bars">${grid}${zeroRule}${targetRule}${bars}${labels}</svg>`;
     }
 
     function makeTrendChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
-      if (_biPeriod === 'quarter') return makeQuarterChart(data, key, color, valFmt, zeroBase, unit, target);
+      // `zeroBase` already marks the countable metrics -- calories, minutes,
+      // meals, articles -- the ones whose value *is* a magnitude. Those read
+      // better as bars. Level metrics (weight, RHR, HRV, sleep score, TDEE,
+      // meal times) keep the line: they sit on a zoomed axis where position
+      // carries the meaning, and as bars they would be a wall of near-equal
+      // heights. Quarters stay all-bars, as before.
+      if (_biPeriod === 'quarter' || zeroBase) return makeBarChart(data, key, color, valFmt, zeroBase, unit, target);
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (points.length < 2) return `<div class="bi-empty-chart">Not enough data to chart yet</div>`;
