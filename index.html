@@ -1438,6 +1438,16 @@
   .meal-time-reset:hover { background: var(--panel); color: var(--text); }
   .meal-empty { padding: 26px 4px; text-align: center; color: var(--text); font-size: 13px; }
   .meal-empty span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+  .bi-period-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .bi-span { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+  .bi-span-slider { width: 132px; height: 4px; -webkit-appearance: none; appearance: none; border-radius: 3px; background: var(--border); cursor: grab; }
+  .bi-span-slider:active { cursor: grabbing; }
+  .bi-span-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border: none; border-radius: 50%; background: var(--brand-navy-soft); box-shadow: 0 1px 4px rgba(15,23,42,.3); cursor: grab; }
+  .bi-span-slider::-moz-range-thumb { width: 14px; height: 14px; border: none; border-radius: 50%; background: var(--brand-navy-soft); box-shadow: 0 1px 4px rgba(15,23,42,.3); cursor: grab; }
+  .bi-span-slider:focus-visible { outline: 2px solid var(--brand-navy-soft); outline-offset: 3px; }
+  .bi-span-value { color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .bi-span-value b { color: var(--text); font-weight: 650; }
+  @media (max-width: 720px) { .bi-period-controls { width: 100%; } .bi-span { flex: 1; } .bi-span-slider { flex: 1; width: auto; } }
   .bi-toggle {
     display: flex; gap: 3px; flex: 0 0 auto; background: color-mix(in srgb, var(--panel) 88%, transparent);
     border: 1px solid var(--border); border-radius: 999px; padding: 4px;
@@ -4101,6 +4111,31 @@
   let _journalData = null;
   let _journalFetch = null;
   let _biPeriod = 'week';
+  // How many periods the charts show. "Last 16 weeks" was a hardcoded window;
+  // the useful span depends on the question — four weeks to see whether this
+  // month moved, a year to see whether anything actually changed. Kept per
+  // period type, because 16 is a sensible number of weeks and a silly number
+  // of quarters, and persisted so the choice survives a reload.
+  const BI_SPAN = {
+    week:    { min: 4, max: 52, def: 16, noun: 'week' },
+    month:   { min: 3, max: 24, def: 12, noun: 'month' },
+    quarter: { min: 4, max: 16, def: 12, noun: 'quarter' },
+  };
+  const _biSpan = (() => {
+    const fallback = { week: 16, month: 12, quarter: 12 };
+    try {
+      const saved = JSON.parse(localStorage.getItem('kanban.biSpan') || '{}');
+      for (const k of Object.keys(fallback)) {
+        const v = Number(saved[k]);
+        if (Number.isFinite(v)) fallback[k] = Math.min(BI_SPAN[k].max, Math.max(BI_SPAN[k].min, Math.round(v)));
+      }
+    } catch { /* a corrupt entry just means defaults */ }
+    return fallback;
+  })();
+  const setBiSpan = n => {
+    _biSpan[_biPeriod] = n;
+    try { localStorage.setItem('kanban.biSpan', JSON.stringify(_biSpan)); } catch { /* private mode */ }
+  };
   const STRENGTH_TARGET = 120; // minutes of strength work per week
 
   function fetchJournal() {
@@ -4513,9 +4548,22 @@
     const parseLocalDate = value => new Date(`${value}T00:00:00`);
     const getLabel = e => e._label || (() => { const d = parseLocalDate(e.week); return `${d.getMonth()+1}/${d.getDate()}`; })();
 
+    // How many distinct months/quarters the journal actually covers — the
+    // ceiling for the slider when the charts are rolled up.
+    function countPeriods() {
+      const keys = new Set();
+      for (const e of entries) {
+        const d = parseLocalDate(e.week);
+        keys.add(_biPeriod === 'month'
+          ? `${d.getFullYear()}-${d.getMonth()}`
+          : `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3)}`);
+      }
+      return keys.size;
+    }
+
     // Build aggregated data for selected period
     function buildPeriodData() {
-      if (_biPeriod === 'week') return entries.slice(-16);
+      if (_biPeriod === 'week') return entries.slice(-_biSpan.week);
 
       const map = {};
       for (const e of entries) {
@@ -4535,7 +4583,7 @@
         map[k]._rows.push(e);
       }
       const keys = Object.keys(map).sort();
-      const slice = keys.slice(-12);
+      const slice = keys.slice(-_biSpan[_biPeriod]);
       return slice.map(k => {
         const rows = map[k]._rows;
         return {
@@ -4695,7 +4743,11 @@
     }
 
     const periodData = buildPeriodData();
-    const periodLbl  = _biPeriod === 'week' ? 'last 16 weeks' : _biPeriod === 'month' ? 'last 12 months' : 'last 12 quarters';
+    const spanNoun   = BI_SPAN[_biPeriod].noun;
+    // The chart can only show periods that exist, so the heading states what
+    // is actually drawn rather than what was asked for.
+    const spanShown  = periodData.length;
+    const periodLbl  = `last ${spanShown} ${spanNoun}${spanShown === 1 ? '' : 's'}`;
     const isAgg      = _biPeriod !== 'week';
 
     // The snapshot represents the current journal week. Eight-week baselines use
@@ -4708,6 +4760,7 @@
     const latestLearn  = latestWith('articles');
     const latestFood   = latestWith('consumed_cals');
     const latestTiming = latestWith('first_meal_mins');
+    const latestBurn   = latestWith('garmin_tdee');
     const avgLastLogged = (key, count = 8) => avgOf(entries.filter(e => e[key] != null).slice(-count), key);
     const avgSlp8 = avgLastLogged('slp_score');
     const avgSlpHrs8 = avgLastLogged('slp_hrs');
@@ -4888,6 +4941,13 @@
     const completenessCount = loggedFields.filter(k => latestRow[k] != null).length;
     const completeness = Math.round(completenessCount / loggedFields.length * 100);
 
+    // Cap the slider at what exists. Dragging to 52 weeks when the journal
+    // holds 30 would promise a year and quietly draw seven months.
+    const spanCfg   = BI_SPAN[_biPeriod];
+    const available = _biPeriod === 'week' ? entries.length : countPeriods();
+    const spanMax   = Math.max(spanCfg.min, Math.min(spanCfg.max, available));
+    const spanValue = Math.min(_biSpan[_biPeriod], spanMax);
+
     const toggleHtml = ['week','month','quarter'].map(p =>
       `<button class="bi-toggle-btn${_biPeriod===p?' active':''}" data-biperiod="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</button>`
     ).join('');
@@ -4936,6 +4996,7 @@
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
           ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
+          ${card({label:'Calories expended', key:'garmin_tdee', current:latestBurn, value:latestBurn?fmtInt(latestBurn.garmin_tdee):'Not logged', unit:latestBurn?'kcal':'', sub:latestBurn?.calorie_deficit!=null?`${fmtInt(latestBurn.calorie_deficit)} kcal deficit against intake`:'Garmin total daily energy expenditure', color:'var(--viz-fuel)'})}
           ${card({label:'Meal timing', key:'eating_window_hrs', current:latestTiming, value:latestTiming?`${formatClock(latestTiming.first_meal_mins)} → ${formatClock(latestTiming.last_meal_mins)}`:'Not logged', sub:latestTiming?`${fmt1(latestTiming.eating_window_hrs)}-hour window across ${fmtInt(latestTiming.meal_days)} logged days`:'Log meals with a time to derive this', color:'var(--viz-fuel)', inverse:true, comparisonLabel:latestTiming?`Average of the first and last meal on each of the ${fmtInt(latestTiming.meal_days)} days logged that week`:''})}
           ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'var(--viz-mind)'})}
         </div>
@@ -4947,7 +5008,14 @@
 
         <div class="bi-period-row">
           <div class="bi-period-copy"><strong>Explore the trends</strong><span>Week and month show trajectories; quarter compares period totals and averages.</span></div>
-          <div class="bi-toggle">${toggleHtml}</div>
+          <div class="bi-period-controls">
+            <label class="bi-span">
+              <input type="range" class="bi-span-slider" min="${spanCfg.min}" max="${spanMax}" step="1" value="${spanValue}"
+                     aria-label="How many ${spanNoun}s to chart">
+              <span class="bi-span-value"><b>${spanValue}</b> ${spanNoun}${spanValue === 1 ? '' : 's'}</span>
+            </label>
+            <div class="bi-toggle">${toggleHtml}</div>
+          </div>
         </div>
 
         <div class="bi-section-heading"><h3>Sleep &amp; recovery</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
@@ -4960,8 +5028,8 @@
 
         <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
         <div class="bi-grid">
-          ${chartCard(`${isAgg?'Total ':''}training time`, 'Logged endurance and strength work', 'training_hrs', 'var(--viz-body)', v=>(+v).toFixed(1), true, 'hours')}
-          ${chartCard(`${isAgg?'Total ':''}intensity`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
+          ${chartCard(`${isAgg?'Total training time':'Training time'}`, 'Logged endurance and strength work', 'training_hrs', 'var(--viz-body)', v=>(+v).toFixed(1), true, 'hours')}
+          ${chartCard(`${isAgg?'Total intensity':'Intensity'}`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
           ${chartCard('Strength training', `Minutes per week${isAgg?', averaged within each period':''} · goal ${STRENGTH_TARGET}`, 'strength_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes', STRENGTH_TARGET)}
           ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'lbs')}
           ${chartCard('Body fat', 'Composition trend', 'body_fat', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'percent')}
@@ -4989,9 +5057,9 @@
         <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
         <div class="bi-grid">
           ${chartCard('Stress', 'Lower is better', 'stress', 'var(--viz-mind)', v=>Math.round(v), false, 'score')}
-          ${chartCard(`${isAgg?'Total ':''}meditation`, 'Sessions completed', 'meditation', 'var(--viz-mind)', v=>Math.round(v), true, 'sessions')}
-          ${chartCard(`${isAgg?'Total ':''}articles`, 'Written learning output', 'articles', 'var(--viz-mind)', v=>Math.round(v), true, 'articles')}
-          ${chartCard(`${isAgg?'Total ':''}podcasts & videos`, 'Audio and video learning', 'podcasts', 'var(--viz-mind)', v=>Math.round(v), true, 'items')}
+          ${chartCard(`${isAgg?'Total meditation':'Meditation'}`, 'Sessions completed', 'meditation', 'var(--viz-mind)', v=>Math.round(v), true, 'sessions')}
+          ${chartCard(`${isAgg?'Total articles':'Articles'}`, 'Written learning output', 'articles', 'var(--viz-mind)', v=>Math.round(v), true, 'articles')}
+          ${chartCard(`${isAgg?'Total podcasts & videos':'Podcasts & videos'}`, 'Audio and video learning', 'podcasts', 'var(--viz-mind)', v=>Math.round(v), true, 'items')}
           </div>
           <div class="bi-tooltip" role="tooltip"><strong></strong><span></span></div>
         </div>
@@ -5027,6 +5095,21 @@
         renderPersonalStatsPage();
       });
     });
+
+    // The label tracks the drag, but the page only rebuilds on release —
+    // re-rendering sixteen SVG charts on every pixel of travel stutters.
+    const slider = el.querySelector('.bi-span-slider');
+    if (slider) {
+      const readout = el.querySelector('.bi-span-value');
+      slider.addEventListener('input', () => {
+        const n = Number(slider.value);
+        readout.innerHTML = `<b>${n}</b> ${spanNoun}${n === 1 ? '' : 's'}`;
+      });
+      slider.addEventListener('change', () => {
+        setBiSpan(Number(slider.value));
+        renderPersonalStatsPage();
+      });
+    }
   }
 
   // === Mutations ===
