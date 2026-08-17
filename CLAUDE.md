@@ -65,23 +65,23 @@ completed_at timestamptz             -- auto-set by `set_completed_at` trigger o
 
 Two tables, two grains. `journal_entries` holds the **weekly** rollup; `food_log_entries` holds the **individual meals** behind it so the dashboard can drill from "3 non-profile meals" into which three.
 
-Most weekly food columns are Notion rollups copied verbatim (`FL Non Profile` → `non_profile_meals`, `FL DCP` → `dcp_meals`, `FL Cooked` → `cooked_meals`). Notion still has `FL Drinks`, `FL Milk Drinks`, `FL Total Cals` and `FL Total Protein` that nothing reads yet.
+Some weekly food columns are Notion rollups copied verbatim (`FL Non Profile` → `non_profile_meals`, `FL DCP` → `dcp_meals`). `FL Cooked` is deliberately **not** — see below. Notion still has `FL Drinks`, `FL Milk Drinks`, `FL Total Cals` and `FL Total Protein` that nothing reads yet.
 
-**Meal timing is derived, not synced.** Notion has no rollup for it, so `weekly_meal_timing()` computes `first_meal_mins`, `last_meal_mins`, `eating_window_hrs`, `meal_days` and `total_meals` from the meal rows. Stored as minutes after local midnight so the numeric chart machinery can draw them; the UI formats back to a clock.
+**Meal timing and the cooked count are derived, not synced.** `weekly_meal_stats()` computes `first_meal_mins`, `last_meal_mins`, `eating_window_hrs`, `meal_days`, `total_meals` and `cooked_meals` from the meal rows. Stored as minutes after local midnight so the numeric chart machinery can draw them; the UI formats back to a clock.
 
 - **An eating day runs 04:00 → 03:59.** A 00:30 snack closes the night before rather than opening the next day. `EATING_DAY_START_MIN` in `sync_journal_to_supabase.py` and the same constant in `index.html` and `scriptable/agentos-food.js` **must agree** — if they drift, the charts and the drill-down will disagree about which day a late meal belongs to.
 - Times are resolved to `FOOD_LOG_TZ` (default `America/Los_Angeles`). Notion returns a real UTC offset on every timed entry; date-only entries are skipped rather than guessed at as midnight.
 - Weeks with fewer than `MIN_TIMING_DAYS` (3) logged days report coverage but no averages — one 20:00 meal would otherwise read as a 20:00 first meal and a 0-hour window. Same spirit as the `MIN_PLAUSIBLE_DAILY_CALS` floor on calories.
 
-**`is_cooked` is just `Source == "Home"`** in Notion — nothing about cooking. A hot chocolate counts. The UI says so rather than implying effort, and pairs the count with `total_meals` as a denominator.
+**`is_cooked` is just `Source == "Home"`** in Notion — nothing about cooking. Leftovers, trail mix and a hot chocolate all count. Nothing derivable from the row separates those from a real cooked meal, so it is treated as a *default* rather than an answer: `cooked_meals` is derived in the sync as `coalesce(is_cooked_override, is_cooked)`, **not** copied from the `FL Cooked` rollup. Mark a meal "not cooked" in the drill-down and the weekly count follows on the next sync.
 
-### Corrected meal times
+### Corrected meals
 
 The frontend is static on GitHub Pages, so it cannot hold the Notion token and write a fix upstream. Instead:
 
-- The sync owns `eaten_at` and **never** writes `eaten_at_override`.
-- Everything that reads a time uses `coalesce(eaten_at_override, eaten_at)` — in the drill-down, and in the sync's own timing derivation (`fetch_time_overrides`), so a correction is not undone by the next run.
-- `food_log_entries` has an update policy for `authenticated` plus a `before update` trigger (`food_log_entries_guard_client_update`) that pins every other column to its old value for browser sessions. `service_role` (the sync) keeps full write access. The policy alone cannot scope an update to one column.
+- Two override columns, both owned by the browser and **never** written by the sync: `eaten_at_override` (timestamptz) and `is_cooked_override` (boolean, tri-state — `null` defers to Notion, `false` demotes, `true` promotes).
+- Everything that reads either value uses `coalesce(override, notion_value)` — in the drill-downs, in the widget, and in the sync's own derivation (`fetch_meal_overrides` → `weekly_meal_stats`), so a correction is not undone by the next run.
+- `food_log_entries` has an update policy for `authenticated` plus a `before update` trigger (`food_log_entries_guard_client_update`) that pins every other column to its old value for browser sessions, and a column-level `grant update (eaten_at_override, is_cooked_override)`. `service_role` (the sync) keeps full write access. The policy alone cannot scope an update to one column — **a new override column needs adding to that grant**, or the browser write fails silently.
 
 An edit shows immediately in the drill-down (computed client-side) and reaches the weekly charts on the next sync.
 

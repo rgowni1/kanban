@@ -123,7 +123,6 @@ def page_to_row(page, user_id, synced_at):
         "garmin_tdee": number("Garmin TDEE"),
         "non_profile_meals": rollup_number("FL Non Profile"),
         "dcp_meals": rollup_number("FL DCP"),
-        "cooked_meals": rollup_number("FL Cooked"),
     }
 
     # The Notion food-log formulas average only the days that were actually
@@ -144,7 +143,6 @@ def page_to_row(page, user_id, synced_at):
     if row["consumed_cals"] is None:
         row["non_profile_meals"] = None
         row["dcp_meals"] = None
-        row["cooked_meals"] = None
 
     return row
 
@@ -279,24 +277,24 @@ def fetch_food_log_rows(token, database_id, user_id):
             return rows
 
 
-def fetch_time_overrides(supabase_url, secret_key, user_id):
-    """Meal times corrected in the dashboard. The sync owns `eaten_at`, so the
-    only way an edit survives is for the derived timing below to prefer the
-    override — otherwise the weekly charts would keep reporting the wrong time
-    the correction was made to fix."""
+def fetch_meal_overrides(supabase_url, secret_key, user_id):
+    """Corrections made in the dashboard. The sync owns `eaten_at` and
+    `is_cooked`, so the only way an edit survives is for the derived weekly
+    numbers below to prefer the override — otherwise the charts would keep
+    reporting the very value the correction was made to fix."""
     query = urlparse.urlencode({
-        "select": "notion_page_id,eaten_at_override",
+        "select": "notion_page_id,eaten_at_override,is_cooked_override",
         "user_id": f"eq.{user_id}",
-        "eaten_at_override": "not.is.null",
+        "or": "(eaten_at_override.not.is.null,is_cooked_override.not.is.null)",
     })
     status, payload = http(
         f"{supabase_url}/rest/v1/food_log_entries?{query}",
         headers={"apikey": secret_key, "Authorization": f"Bearer {secret_key}"},
     )
     if status >= 400 or not isinstance(payload, list):
-        print(f"Could not read meal-time overrides ({status}); using Notion times as-is.", flush=True)
+        print(f"Could not read meal overrides ({status}); using Notion values as-is.", flush=True)
         return {}
-    return {r["notion_page_id"]: r["eaten_at_override"] for r in payload if r.get("notion_page_id")}
+    return {r["notion_page_id"]: r for r in payload if r.get("notion_page_id")}
 
 
 def local_eating_slot(timestamp):
@@ -321,20 +319,31 @@ def local_eating_slot(timestamp):
     return day, minutes
 
 
-def weekly_meal_timing(meals, overrides=None):
-    """Per-week average first and last meal, keyed by the Monday of the week so
-    it merges straight onto the journal rows. Notion has no rollup for this, so
-    it is derived here rather than read."""
+def weekly_meal_stats(meals, overrides=None):
+    """Per-week meal timing and cooked count, keyed by the Monday of the week so
+    it merges straight onto the journal rows.
+
+    Notion has no rollup for timing at all, and its `FL Cooked` rollup counts
+    `Source == "Home"`, which is "eaten in" rather than "cooked" — it credits a
+    hot chocolate and a bowl of last night's takeaway. Both are therefore
+    derived here from the meal rows, preferring any dashboard correction."""
     overrides = overrides or {}
     by_day = {}
     meals_per_week = {}
+    cooked_per_week = {}
     for meal in meals:
-        slot = local_eating_slot(overrides.get(meal["notion_page_id"]) or meal.get("eaten_at"))
+        override = overrides.get(meal["notion_page_id"]) or {}
+        slot = local_eating_slot(override.get("eaten_at_override") or meal.get("eaten_at"))
         if not slot:
             continue
         day, minutes = slot
         week = (day - timedelta(days=day.weekday())).isoformat()
         meals_per_week[week] = meals_per_week.get(week, 0) + 1
+        cooked = override.get("is_cooked_override")
+        if cooked is None:
+            cooked = meal.get("is_cooked")
+        if cooked:
+            cooked_per_week[week] = cooked_per_week.get(week, 0) + 1
         first, last = by_day.get(day, (minutes, minutes))
         by_day[day] = (min(first, minutes), max(last, minutes))
 
@@ -353,19 +362,21 @@ def weekly_meal_timing(meals, overrides=None):
             "eating_window_hrs": None if thin else round(mean([l - f for f, l in days]) / 60, 2),
             "meal_days": len(days),
             "total_meals": meals_per_week.get(week, 0),
+            "cooked_meals": cooked_per_week.get(week, 0),
         }
     return timing
 
 
-TIMING_FIELDS = ("first_meal_mins", "last_meal_mins", "eating_window_hrs", "meal_days", "total_meals")
+DERIVED_FIELDS = ("first_meal_mins", "last_meal_mins", "eating_window_hrs",
+                  "meal_days", "total_meals", "cooked_meals")
 
 
-def merge_timing(rows, timing):
+def merge_derived(rows, timing):
     """Every journal row carries the timing columns, present or not, so a week
     whose meals were deleted is cleared rather than left showing stale times."""
     for row in rows:
         stats = timing.get(row["week"])
-        for field in TIMING_FIELDS:
+        for field in DERIVED_FIELDS:
             row[field] = stats[field] if stats else None
     return sum(1 for row in rows if row["first_meal_mins"] is not None)
 
@@ -434,13 +445,13 @@ def main():
         print("Could not resolve the Food Log database from the journal relation; skipping meals.")
 
     if meals:
-        overrides = fetch_time_overrides(
+        overrides = fetch_meal_overrides(
             required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], required["KANBAN_USER_ID"]
         )
         if overrides:
-            print(f"Applying {len(overrides)} corrected meal time(s) from the dashboard.", flush=True)
-        timed_weeks = merge_timing(rows, weekly_meal_timing(meals, overrides))
-        print(f"Derived meal timing for {timed_weeks} weeks.", flush=True)
+            print(f"Applying {len(overrides)} dashboard correction(s).", flush=True)
+        timed_weeks = merge_derived(rows, weekly_meal_stats(meals, overrides))
+        print(f"Derived meal timing and cooked counts for {timed_weeks} weeks.", flush=True)
 
     if "--dry-run" in sys.argv:
         print("Dry run complete; Supabase was not changed.")

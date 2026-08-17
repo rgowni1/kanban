@@ -17,7 +17,7 @@
 //   3. Home screen → add a Scriptable widget → pick this script.
 //
 // The widget reads the same Supabase rows the dashboard does, so it is only as
-// fresh as the last sync (the GitHub Action, daily). It never writes.
+// fresh as the last sync (the GitHub Action, every 3 hours). It never writes.
 
 const SUPABASE_URL = "https://icxwnryqyffvmxscwfcv.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_kw2DYRs7qCPz74v-tzR12w_TDreloum";
@@ -27,7 +27,8 @@ const TARGETS = {
   // Non-profile = under 20% of calories from protein on a >=200 kcal meal.
   // Recent weeks have run 3-6, so 4 is a stretch rather than a formality.
   nonProfilePerWeek: 4,
-  // Share of the week's meals eaten at home (Notion's Source = Home).
+  // Share of the week's meals actually cooked (Notion's Source = Home flag,
+  // minus anything marked "not cooked" in the dashboard).
   cookedShare: 0.5,
   // Last meal of the day, as a 24h clock time.
   lastMealBy: "20:00",
@@ -95,7 +96,7 @@ async function fetchMeals(token) {
   const from = weekStart();
   from.setDate(from.getDate() - 1);
   const query = new URLSearchParams({
-    select: "name,eaten_at,eaten_at_override,meal_type,source,calories,protein_g,is_non_profile,is_dcp,is_cooked",
+    select: "name,eaten_at,eaten_at_override,meal_type,source,calories,protein_g,is_non_profile,is_dcp,is_cooked,is_cooked_override",
     eaten_at: `gte.${from.toISOString()}`,
     order: "eaten_at.asc",
   });
@@ -138,7 +139,10 @@ function summarise(meals) {
     total: rows.length,
     nonProfile: rows.filter(r => r.is_non_profile).length,
     dcp: rows.filter(r => r.is_dcp).length,
-    cooked: rows.filter(r => r.is_cooked).length,
+    // Same rule as the dashboard and the sync: Notion's flag is only a
+    // default, a manual correction wins. Otherwise the widget would keep
+    // counting the leftovers you already marked as not cooked.
+    cooked: rows.filter(r => r.is_cooked_override == null ? r.is_cooked : r.is_cooked_override).length,
     protein: rows.reduce((sum, r) => sum + (Number(r.protein_g) || 0), 0),
     calories: rows.reduce((sum, r) => sum + (Number(r.calories) || 0), 0),
     daysLogged: lastByDay.size,

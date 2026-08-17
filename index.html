@@ -1427,6 +1427,12 @@
   .meal-time-input:disabled { opacity: .5; }
   .meal-timebox.edited .meal-time-input { border-color: var(--viz-fuel); }
   .meal-timebox.failed .meal-time-input { border-color: #d94040; }
+  .meal-mark { flex: 0 0 auto; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 9.5px; cursor: pointer; white-space: nowrap; }
+  .meal-mark:hover:not(:disabled) { border-color: var(--viz-fuel); color: var(--viz-fuel); }
+  .meal-mark:disabled { opacity: .5; cursor: default; }
+  /* Demoted, not deleted: it stays on the list so the call can be undone. */
+  .meal-off { opacity: .48; }
+  .meal-off .meal-name { text-decoration: line-through; }
   .meal-time-reset { padding: 3px 6px; border: none; border-radius: 5px; background: transparent; color: var(--muted); font-size: 9.5px; cursor: pointer; }
   .meal-time-reset:hover { background: var(--panel); color: var(--text); }
   .meal-empty { padding: 26px 4px; text-align: center; color: var(--text); font-size: 13px; }
@@ -4310,14 +4316,14 @@
       none: 'No desserts or pastries',
     },
     cooked: {
-      emoji: '🏠',
-      title: 'Cooked at home',
+      emoji: '🍳',
+      title: 'Cooked meals',
       // Worth stating plainly: Notion's rule is `Source == "Home"`, nothing
       // more, so a hot chocolate counts exactly as much as a roast dinner.
-      def: 'Everything logged with <b>Source = Home</b>. That is the whole rule — a hot chocolate or a handful of trail mix counts as cooked, so read this as <b>eaten in</b> rather than as cooking effort.',
-      match: m => m.is_cooked,
+      def: 'Notion only knows <b>Source = Home</b>, which counts leftovers, trail mix and a hot chocolate as cooking. Nothing in the row can tell those apart from a real cooked meal — so mark the ones that were not, and the count becomes yours rather than Notion&rsquo;s.',
+      match: m => isCooked(m),
       callout: m => ['protein_g'],
-      none: 'Nothing eaten at home',
+      none: 'Nothing cooked',
     },
   };
 
@@ -4337,76 +4343,108 @@
     const thisWeek = (meals || []).map(m => ({ meal: m, slot: eatingSlot(m) }))
       .filter(x => x.slot && x.slot.day >= week.start);
 
-    let body;
-    if (!meals) {
-      body = `<div class="meal-empty">Could not load the food log.<br><span>Run <code>python3 sync_journal_to_supabase.py</code> and try again.</span></div>`;
-    } else {
-      const hits = thisWeek.filter(x => cfg.match(x.meal));
-      if (!hits.length) {
-        body = `<div class="meal-empty">🎉 ${cfg.none} this week.</div>`;
-      } else {
-        const byDay = new Map();
-        for (const x of hits) {
-          const key = x.slot.day.getTime();
-          if (!byDay.has(key)) byDay.set(key, []);
-          byDay.get(key).push(x.meal);
-        }
-        const num = v => v == null ? '—' : Math.round(v);
-        const SHORT = { carbs_g: 'c', fat_g: 'f', protein_g: 'p' };
-        const rows = [...byDay.entries()].sort((a, b) => b[0] - a[0]).map(([day, list]) => {
-          const label = new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-          return `<li class="meal-day"><span>${escapeHtml(label)}</span><span>${list.length}</span></li>` +
-            list.map(m => {
-              const hot = new Set(cfg.callout(m));
-              const macros = ['carbs_g', 'fat_g', 'protein_g']
-                .map(k => `<span class="${hot.has(k) ? 'meal-over' : ''}">${num(m[k])}${SHORT[k]}</span>`).join(' ');
-              const tags = [
-                MEAL_TYPE_EMOJI[m.meal_type] ? `${MEAL_TYPE_EMOJI[m.meal_type]} ${escapeHtml(m.meal_type)}` : '',
-                SOURCE_EMOJI[m.source] ? `${SOURCE_EMOJI[m.source]} ${escapeHtml(m.source)}` : '',
-                kind !== 'dcp' && m.is_dcp ? '🍪 dessert' : '',
-              ].filter(Boolean).join(' · ');
-              // The dessert is usually one clause of a longer meal, so in this
-              // drill the name wraps instead of truncating — a highlight the
-              // ellipsis has eaten explains nothing.
-              return `<li class="meal-row">
-                <span class="meal-emoji">${kind === 'dcp' ? '🍪' : mealEmoji(m.name)}</span>
-                <span class="meal-body">
-                  <span class="meal-name${kind === 'dcp' ? ' wrap' : ''}" title="${escapeHtml(m.name)}">${kind === 'dcp' ? highlightDcp(m.name) : escapeHtml(m.name)}</span>
-                  <span class="meal-meta">${tags}</span>
-                </span>
-                <span class="meal-macros"><b>${num(m.calories)}</b><span class="meal-mac">${macros}</span></span>
-              </li>`;
-            }).join('');
-        }).join('');
-        const kcal = hits.reduce((s, x) => s + (Number(x.meal.calories) || 0), 0);
-        const stat = (v, l) => `<span class="meal-stat"><b>${v}</b>${l}</span>`;
-        // Every hit in the cooked drill is Home by definition, so "0 out" would
-        // be dead space; the share of the week's meals is the real question.
-        const lastStat = kind === 'cooked'
-          ? stat(`${Math.round(hits.length / Math.max(1, thisWeek.length) * 100)}%`, 'of meals')
-          : stat(hits.filter(x => x.meal.source === 'Restaurant').length, '🍴 out');
-        // These calories belong to the whole meal, not to the dessert inside
-        // it, so the dessert drill does not get to call them dessert calories.
-        body = `<div class="meal-tally">
-            ${stat(hits.length, kind === 'dcp' ? 'items' : 'meals')}
-            ${stat(`${byDay.size}/${week.elapsed}`, 'days')}
-            ${stat(kcal.toLocaleString(), kind === 'dcp' ? 'kcal in those meals' : 'kcal')}
-            ${lastStat}
-          </div><ul class="meal-list">${rows}</ul>`;
+    const render = () => {
+      if (!meals) {
+        return `<div class="meal-empty">Could not load the food log.<br><span>Run <code>python3 sync_journal_to_supabase.py</code> and try again.</span></div>`;
       }
-    }
+      // A meal demoted out of the cooked count stays on the list, struck
+      // through, so the correction can be undone. Dropping it on the spot would
+      // make a mis-tap unrecoverable without a trip to Supabase.
+      const demoted = x => kind === 'cooked' && x.meal.is_cooked_override === false;
+      const hits = thisWeek.filter(x => cfg.match(x.meal) || demoted(x));
+      const counted = hits.filter(x => cfg.match(x.meal));
+      if (!hits.length) return `<div class="meal-empty">🎉 ${cfg.none} this week.</div>`;
 
-    host.innerHTML = `<div class="meal-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.title)}">
+      const byDay = new Map();
+      for (const x of hits) {
+        const key = x.slot.day.getTime();
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push(x);
+      }
+      const num = v => v == null ? '—' : Math.round(v);
+      const SHORT = { carbs_g: 'c', fat_g: 'f', protein_g: 'p' };
+      const rows = [...byDay.entries()].sort((a, b) => b[0] - a[0]).map(([day, list]) => {
+        const label = new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const shown = list.filter(x => cfg.match(x.meal)).length;
+        return `<li class="meal-day"><span>${escapeHtml(label)}</span><span>${shown}</span></li>` +
+          list.map(({ meal: m }) => {
+            const off = demoted({ meal: m });
+            const hot = new Set(cfg.callout(m));
+            const macros = ['carbs_g', 'fat_g', 'protein_g']
+              .map(k => `<span class="${hot.has(k) ? 'meal-over' : ''}">${num(m[k])}${SHORT[k]}</span>`).join(' ');
+            const tags = [
+              MEAL_TYPE_EMOJI[m.meal_type] ? `${MEAL_TYPE_EMOJI[m.meal_type]} ${escapeHtml(m.meal_type)}` : '',
+              SOURCE_EMOJI[m.source] ? `${SOURCE_EMOJI[m.source]} ${escapeHtml(m.source)}` : '',
+              kind !== 'dcp' && m.is_dcp ? '🍪 dessert' : '',
+              kind === 'cooked' && m.is_cooked_override === true ? '✎ marked cooked' : '',
+              off ? '✎ not cooked' : '',
+            ].filter(Boolean).join(' · ');
+            const action = kind !== 'cooked' ? '' : `<button type="button" class="meal-mark" data-meal-id="${escapeHtml(m.id)}" data-cooked="${off ? 'true' : 'false'}">${off ? 'undo' : 'not cooked'}</button>`;
+            // The dessert is usually one clause of a longer meal, so in that
+            // drill the name wraps instead of truncating — a highlight the
+            // ellipsis has eaten explains nothing.
+            return `<li class="meal-row${off ? ' meal-off' : ''}">
+              <span class="meal-emoji">${kind === 'dcp' ? '🍪' : mealEmoji(m.name)}</span>
+              <span class="meal-body">
+                <span class="meal-name${kind === 'dcp' ? ' wrap' : ''}" title="${escapeHtml(m.name)}">${kind === 'dcp' ? highlightDcp(m.name) : escapeHtml(m.name)}</span>
+                <span class="meal-meta">${tags}</span>
+              </span>
+              ${action}
+              <span class="meal-macros"><b>${num(m.calories)}</b><span class="meal-mac">${macros}</span></span>
+            </li>`;
+          }).join('');
+      }).join('');
+
+      const kcal = counted.reduce((s, x) => s + (Number(x.meal.calories) || 0), 0);
+      const stat = (v, l) => `<span class="meal-stat"><b>${v}</b>${l}</span>`;
+      const dayCount = new Set(counted.map(x => x.slot.day.getTime())).size;
+      // Every cooked hit is home-sourced by definition, so "0 out" would be
+      // dead space; the share of the week's meals is the real question.
+      const lastStat = kind === 'cooked'
+        ? stat(`${Math.round(counted.length / Math.max(1, thisWeek.length) * 100)}%`, 'of meals')
+        : stat(counted.filter(x => x.meal.source === 'Restaurant').length, '🍴 out');
+      // These calories belong to the whole meal, not to the dessert inside it,
+      // so the dessert drill does not get to call them dessert calories.
+      return `<div class="meal-tally">
+          ${stat(counted.length, kind === 'dcp' ? 'items' : 'meals')}
+          ${stat(`${dayCount}/${week.elapsed}`, 'days')}
+          ${stat(kcal.toLocaleString(), kind === 'dcp' ? 'kcal in those meals' : 'kcal')}
+          ${lastStat}
+        </div><ul class="meal-list">${rows}</ul>`;
+    };
+
+    const shell = body => `
         <div class="meal-head">
           <h3>${cfg.emoji} ${escapeHtml(cfg.title)}</h3>
           <span class="meal-range">${escapeHtml(week.label)} · Mon–Sun</span>
           <button type="button" class="meal-x" aria-label="Close">✕</button>
         </div>
         <p class="meal-def">${cfg.def}</p>
-        ${body}
-      </div>`;
+        ${body}`;
+
+    const wire = () => {
+      host.querySelector('.meal-x').addEventListener('click', close);
+      host.querySelectorAll('.meal-mark').forEach(button => {
+        button.addEventListener('click', async () => {
+          const meal = meals.find(m => m.id === button.dataset.mealId);
+          if (!meal) return;
+          button.disabled = true;
+          // data-cooked carries the value to write: "undo" clears back to
+          // Notion's flag, "not cooked" pins it false.
+          const ok = await setMealCooked(meal, button.dataset.cooked === 'true' ? null : false);
+          if (!ok) { button.disabled = false; button.textContent = 'failed'; return; }
+          paint();
+        });
+      });
+    };
+    const paint = () => {
+      host.querySelector('.meal-modal').innerHTML = shell(render());
+      wire();
+    };
+
+    host.innerHTML = `<div class="meal-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.title)}">${shell(render())}</div>`;
     host.addEventListener('click', e => { if (e.target === host) close(); });
-    host.querySelector('.meal-x').addEventListener('click', close);
+    wire();
     document.addEventListener('keydown', onKey);
     document.body.appendChild(host);
   }
@@ -4430,6 +4468,22 @@
     if (error) return null;
     meal.eaten_at_override = iso;   // keep the cached copy honest
     return iso;
+  }
+
+  // "Cooked" is a judgement, not a rule. Notion's flag is `Source == "Home"`,
+  // which credits leftovers, trail mix and a hot chocolate; nothing derivable
+  // from the row separates those from a meal that was actually cooked. So the
+  // flag is a default and the override is the answer. null defers to Notion.
+  const isCooked = m => m.is_cooked_override == null ? !!m.is_cooked : !!m.is_cooked_override;
+
+  async function setMealCooked(meal, value) {
+    const { error } = await supabase
+      .from('food_log_entries')
+      .update({ is_cooked_override: value })
+      .eq('id', meal.id);
+    if (error) return false;
+    meal.is_cooked_override = value;   // keep the cached copy honest
+    return true;
   }
 
   async function clearMealTime(meal) {
