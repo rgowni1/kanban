@@ -1423,6 +1423,10 @@
   .meal-mac { display: block; margin-top: 1px; color: var(--muted); font-size: 9.5px; }
   .meal-over { color: var(--viz-fuel); font-weight: 650; }
   .meal-edge { color: var(--viz-fuel); font-weight: 700; }
+  /* In the dessert drill the name wraps rather than truncating, so the marked
+     word is never the part the ellipsis ate. */
+  .meal-name.wrap { white-space: normal; overflow: visible; text-overflow: clip; }
+  .meal-hit { padding: 0 2px; border-radius: 3px; background: color-mix(in srgb, var(--viz-fuel) 26%, transparent); color: var(--text); font-weight: 700; }
   .meal-timebox { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
   .meal-time-input { width: 96px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums; }
   .meal-time-input:hover { border-color: var(--viz-fuel); }
@@ -4171,6 +4175,59 @@
   const MEAL_TYPE_EMOJI = { Breakfast: '🌅', Lunch: '🌞', Dinner: '🌙', Snack: '🍿' };
   const SOURCE_EMOJI = { Home: '🏠', Restaurant: '🍴', Other: '📦' };
 
+  // === Meal timing =========================================================
+  // An eating day runs 04:00 → 03:59, matching EATING_DAY_START_MIN in
+  // sync_journal_to_supabase.py: a 00:30 snack closes the night before rather
+  // than opening the next day at half past midnight. The two implementations
+  // have to agree or the drill-down and the charts will disagree about which
+  // day a late meal belongs to.
+  const EATING_DAY_START_MIN = 4 * 60;
+  // The sync owns `eaten_at`; a correction made here lands in
+  // `eaten_at_override` so the next sync cannot silently revert it.
+  const mealTime = m => m.eaten_at_override || m.eaten_at;
+  const eatingSlot = m => {
+    const iso = mealTime(m);
+    if (!iso) return null;
+    const at = new Date(iso);
+    if (isNaN(at)) return null;
+    let minutes = at.getHours() * 60 + at.getMinutes();
+    const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+    if (minutes < EATING_DAY_START_MIN) { day.setDate(day.getDate() - 1); minutes += 24 * 60; }
+    return { day, minutes, at };
+  };
+  const clockOf = minutes => {
+    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
+    const h = Math.floor(norm / 60);
+    return `${h % 12 || 12}:${String(norm % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  };
+  const hhmm = minutes => {
+    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(norm / 60)).padStart(2, '0')}:${String(norm % 60).padStart(2, '0')}`;
+  };
+
+  // The journal week runs Monday → Sunday, so the drill-downs scope to it
+  // rather than to a rolling window. Opened on a Sunday, "last 8 days" reached
+  // back to the *previous* Sunday and counted a day belonging to the week
+  // before against this one.
+  const journalWeek = () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));  // getDay() is 0 on Sunday
+    const elapsed = Math.min(7, Math.floor((Date.now() - start.getTime()) / 86400000) + 1);
+    return { start, elapsed, label: `week of ${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` };
+  };
+
+  // The same tokens Notion's `Is DCP?` formula tests for. Notion matches on
+  // substring, so "cupcake" is a genuine hit; the surrounding letters and the
+  // trailing `s?` only widen the highlight to the whole word, which reads
+  // better than marking "cup[cake]". Nothing here changes what is flagged.
+  const DCP_PATTERN = /[a-z]*(?:cookie|cake|dessert|croissant|pastry|brownie)s?/gi;
+  // Most desserts are logged as a clause inside a larger meal ("salmon salad
+  // …, yogurt parfait"), so showing the whole name answers "which meal" but
+  // not "which part of it was the dessert". Mark the words that tripped the flag.
+  const highlightDcp = name => escapeHtml(String(name || ''))
+    .replace(DCP_PATTERN, match => `<mark class="meal-hit">${match}</mark>`);
+
   // One drill-down, configured per flag. Both read the same food_log_entries
   // rows; only the filter, the wording, and which macros to call out differ.
   const MEAL_DRILLS = {
@@ -4203,35 +4260,39 @@
     },
   };
 
-  async function openMealDrill(kind, days = 8) {
+  async function openMealDrill(kind) {
     const cfg = MEAL_DRILLS[kind];
     if (!cfg) return;
     const meals = await fetchMeals();
+    const week = journalWeek();
     const host = document.createElement('div');
     host.className = 'meal-backdrop';
     const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = e => { if (e.key === 'Escape') close(); };
 
+    // Grouped by eating day, so a meal logged at 00:30 lands on the night it
+    // belonged to rather than opening a new day — and, on a Monday, is not
+    // dragged into a week it was not eaten in.
+    const thisWeek = (meals || []).map(m => ({ meal: m, slot: eatingSlot(m) }))
+      .filter(x => x.slot && x.slot.day >= week.start);
+
     let body;
     if (!meals) {
       body = `<div class="meal-empty">Could not load the food log.<br><span>Run <code>python3 sync_journal_to_supabase.py</code> and try again.</span></div>`;
     } else {
-      const cutoff = new Date();
-      cutoff.setHours(0, 0, 0, 0);
-      cutoff.setDate(cutoff.getDate() - (days - 1));
-      const hits = meals.filter(m => cfg.match(m) && m.eaten_at && new Date(m.eaten_at) >= cutoff);
+      const hits = thisWeek.filter(x => cfg.match(x.meal));
       if (!hits.length) {
-        body = `<div class="meal-empty">🎉 ${cfg.none} in the last ${days} days.</div>`;
+        body = `<div class="meal-empty">🎉 ${cfg.none} this week.</div>`;
       } else {
         const byDay = new Map();
-        for (const m of hits) {
-          const key = new Date(m.eaten_at).toDateString();
+        for (const x of hits) {
+          const key = x.slot.day.getTime();
           if (!byDay.has(key)) byDay.set(key, []);
-          byDay.get(key).push(m);
+          byDay.get(key).push(x.meal);
         }
         const num = v => v == null ? '—' : Math.round(v);
         const SHORT = { carbs_g: 'c', fat_g: 'f', protein_g: 'p' };
-        const rows = [...byDay.entries()].map(([day, list]) => {
+        const rows = [...byDay.entries()].sort((a, b) => b[0] - a[0]).map(([day, list]) => {
           const label = new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
           return `<li class="meal-day"><span>${escapeHtml(label)}</span><span>${list.length}</span></li>` +
             list.map(m => {
@@ -4243,28 +4304,32 @@
                 SOURCE_EMOJI[m.source] ? `${SOURCE_EMOJI[m.source]} ${escapeHtml(m.source)}` : '',
                 kind !== 'dcp' && m.is_dcp ? '🍪 dessert' : '',
               ].filter(Boolean).join(' · ');
+              // The dessert is usually one clause of a longer meal, so in this
+              // drill the name wraps instead of truncating — a highlight the
+              // ellipsis has eaten explains nothing.
               return `<li class="meal-row">
                 <span class="meal-emoji">${kind === 'dcp' ? '🍪' : mealEmoji(m.name)}</span>
                 <span class="meal-body">
-                  <span class="meal-name" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</span>
+                  <span class="meal-name${kind === 'dcp' ? ' wrap' : ''}" title="${escapeHtml(m.name)}">${kind === 'dcp' ? highlightDcp(m.name) : escapeHtml(m.name)}</span>
                   <span class="meal-meta">${tags}</span>
                 </span>
                 <span class="meal-macros"><b>${num(m.calories)}</b><span class="meal-mac">${macros}</span></span>
               </li>`;
             }).join('');
         }).join('');
-        const kcal = hits.reduce((s, m) => s + (Number(m.calories) || 0), 0);
+        const kcal = hits.reduce((s, x) => s + (Number(x.meal.calories) || 0), 0);
         const stat = (v, l) => `<span class="meal-stat"><b>${v}</b>${l}</span>`;
         // Every hit in the cooked drill is Home by definition, so "0 out" would
-        // be dead space; the share of the window's meals is the real question.
-        const inWindow = meals.filter(m => m.eaten_at && new Date(m.eaten_at) >= cutoff).length;
+        // be dead space; the share of the week's meals is the real question.
         const lastStat = kind === 'cooked'
-          ? stat(`${Math.round(hits.length / Math.max(1, inWindow) * 100)}%`, 'of meals')
-          : stat(hits.filter(m => m.source === 'Restaurant').length, '🍴 out');
+          ? stat(`${Math.round(hits.length / Math.max(1, thisWeek.length) * 100)}%`, 'of meals')
+          : stat(hits.filter(x => x.meal.source === 'Restaurant').length, '🍴 out');
+        // These calories belong to the whole meal, not to the dessert inside
+        // it, so the dessert drill does not get to call them dessert calories.
         body = `<div class="meal-tally">
             ${stat(hits.length, kind === 'dcp' ? 'items' : 'meals')}
-            ${stat(`${byDay.size}/${days}`, 'days')}
-            ${stat(kcal.toLocaleString(), 'kcal')}
+            ${stat(`${byDay.size}/${week.elapsed}`, 'days')}
+            ${stat(kcal.toLocaleString(), kind === 'dcp' ? 'kcal in those meals' : 'kcal')}
             ${lastStat}
           </div><ul class="meal-list">${rows}</ul>`;
       }
@@ -4273,7 +4338,7 @@
     host.innerHTML = `<div class="meal-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(cfg.title)}">
         <div class="meal-head">
           <h3>${cfg.emoji} ${escapeHtml(cfg.title)}</h3>
-          <span class="meal-range">last ${days} days</span>
+          <span class="meal-range">${escapeHtml(week.label)} · Mon–Sun</span>
           <button type="button" class="meal-x" aria-label="Close">✕</button>
         </div>
         <p class="meal-def">${cfg.def}</p>
@@ -4284,36 +4349,6 @@
     document.addEventListener('keydown', onKey);
     document.body.appendChild(host);
   }
-
-  // === Meal timing =========================================================
-  // An eating day runs 04:00 → 03:59, matching MIN/EATING_DAY_START_MIN in
-  // sync_journal_to_supabase.py: a 00:30 snack closes the night before rather
-  // than opening the next day at half past midnight. The two implementations
-  // have to agree or the drill-down and the charts will disagree about which
-  // day a late meal belongs to.
-  const EATING_DAY_START_MIN = 4 * 60;
-  // The sync owns `eaten_at`; a correction made here lands in
-  // `eaten_at_override` so the next sync cannot silently revert it.
-  const mealTime = m => m.eaten_at_override || m.eaten_at;
-  const eatingSlot = m => {
-    const iso = mealTime(m);
-    if (!iso) return null;
-    const at = new Date(iso);
-    if (isNaN(at)) return null;
-    let minutes = at.getHours() * 60 + at.getMinutes();
-    const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
-    if (minutes < EATING_DAY_START_MIN) { day.setDate(day.getDate() - 1); minutes += 24 * 60; }
-    return { day, minutes, at };
-  };
-  const clockOf = minutes => {
-    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
-    const h = Math.floor(norm / 60);
-    return `${h % 12 || 12}:${String(norm % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
-  };
-  const hhmm = minutes => {
-    const norm = ((Math.round(minutes) % 1440) + 1440) % 1440;
-    return `${String(Math.floor(norm / 60)).padStart(2, '0')}:${String(norm % 60).padStart(2, '0')}`;
-  };
 
   // Write a corrected time back. The eating-day is held fixed and only the
   // clock moves, so retyping "1:00 AM" on a Tuesday night keeps that meal on
@@ -4346,16 +4381,13 @@
     return true;
   }
 
-  async function openTimingDrill(days = 8) {
+  async function openTimingDrill() {
     const meals = await fetchMeals();
+    const week = journalWeek();
     const host = document.createElement('div');
     host.className = 'meal-backdrop';
     const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = e => { if (e.key === 'Escape') close(); };
-
-    const cutoff = new Date();
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setDate(cutoff.getDate() - (days - 1));
 
     const render = () => {
       if (!meals) {
@@ -4364,12 +4396,12 @@
       const byDay = new Map();
       for (const m of meals) {
         const slot = eatingSlot(m);
-        if (!slot || slot.day < cutoff) continue;
+        if (!slot || slot.day < week.start) continue;
         const key = slot.day.getTime();
         if (!byDay.has(key)) byDay.set(key, []);
         byDay.get(key).push({ meal: m, ...slot });
       }
-      if (!byDay.size) return `<div class="meal-empty">No meals logged in the last ${days} days.</div>`;
+      if (!byDay.size) return `<div class="meal-empty">No meals logged yet this week.</div>`;
 
       const dayList = [...byDay.entries()].sort((a, b) => b[0] - a[0]);
       const spans = dayList.map(([, list]) => {
@@ -4413,7 +4445,7 @@
           ${stat(clockOf(avgFirst), 'avg first')}
           ${stat(clockOf(avgLast), 'avg last')}
           ${stat(`${((avgLast - avgFirst) / 60).toFixed(1)}h`, 'window')}
-          ${stat(`${dayList.length}/${days}`, 'days')}
+          ${stat(`${dayList.length}/${week.elapsed}`, 'days')}
         </div><ul class="meal-list">${rows}</ul>`;
     };
 
@@ -4424,7 +4456,7 @@
     const shell = body => `
         <div class="meal-head">
           <h3>🕰️ Meal timing</h3>
-          <span class="meal-range">last ${days} days</span>
+          <span class="meal-range">${escapeHtml(week.label)} · Mon–Sun</span>
           <button type="button" class="meal-x" aria-label="Close">✕</button>
         </div>
         <p class="meal-def">First and last meal of each <b>eating day</b>, which runs 4am to 4am — a midnight snack closes the night before. Times are read from Notion; <b>edit one here</b> to correct it. Corrections stick, and the weekly charts pick them up on the next sync.</p>
@@ -4985,8 +5017,8 @@
 
     el.querySelectorAll('[data-drill]').forEach(card => {
       card.addEventListener('dblclick', () => card.dataset.drill === 'timing'
-        ? openTimingDrill(8)
-        : openMealDrill(card.dataset.drill, 8));
+        ? openTimingDrill()
+        : openMealDrill(card.dataset.drill));
     });
 
     el.querySelectorAll('[data-biperiod]').forEach(btn => {
