@@ -4276,12 +4276,32 @@
   // rather than to a rolling window. Opened on a Sunday, "last 8 days" reached
   // back to the *previous* Sunday and counted a day belonging to the week
   // before against this one.
-  const journalWeek = () => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+  const journalWeek = from => {
+    const base = from ? new Date(`${from}T00:00:00`) : new Date();
+    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate());
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7));  // getDay() is 0 on Sunday
-    const elapsed = Math.min(7, Math.floor((Date.now() - start.getTime()) / 86400000) + 1);
-    return { start, elapsed, label: `week of ${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` };
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    // A finished week always has seven days behind it; only the running week
+    // counts days so far, so "2/7 days" does not read as a failure on a Tuesday.
+    const elapsed = Date.now() >= end.getTime()
+      ? 7
+      : Math.min(7, Math.floor((Date.now() - start.getTime()) / 86400000) + 1);
+    return { start, end, elapsed, label: `week of ${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` };
+  };
+
+  // Which week a drill opens on when it was not launched from a specific bar.
+  // The calendar week is the wrong default: opened on a Monday morning it is
+  // empty, so the modal reads as "nothing happened" rather than "nothing logged
+  // yet". The most recent week that actually holds a meal is the answer.
+  const latestLoggedWeek = meals => {
+    let newest = null;
+    for (const m of meals || []) {
+      const slot = eatingSlot(m);
+      if (slot && (!newest || slot.day > newest)) newest = slot.day;
+    }
+    if (!newest) return journalWeek();
+    return journalWeek(`${newest.getFullYear()}-${String(newest.getMonth()+1).padStart(2,'0')}-${String(newest.getDate()).padStart(2,'0')}`);
   };
 
   // The same tokens Notion's `Is DCP?` formula tests for. Notion matches on
@@ -4327,11 +4347,11 @@
     },
   };
 
-  async function openMealDrill(kind) {
+  async function openMealDrill(kind, weekOf = null) {
     const cfg = MEAL_DRILLS[kind];
     if (!cfg) return;
     const meals = await fetchMeals();
-    const week = journalWeek();
+    const week = weekOf ? journalWeek(weekOf) : latestLoggedWeek(meals);
     const host = document.createElement('div');
     host.className = 'meal-backdrop';
     const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
@@ -4341,7 +4361,7 @@
     // belonged to rather than opening a new day — and, on a Monday, is not
     // dragged into a week it was not eaten in.
     const thisWeek = (meals || []).map(m => ({ meal: m, slot: eatingSlot(m) }))
-      .filter(x => x.slot && x.slot.day >= week.start);
+      .filter(x => x.slot && x.slot.day >= week.start && x.slot.day < week.end);
 
     const render = () => {
       if (!meals) {
@@ -4496,9 +4516,9 @@
     return true;
   }
 
-  async function openTimingDrill() {
+  async function openTimingDrill(weekOf = null) {
     const meals = await fetchMeals();
-    const week = journalWeek();
+    const week = weekOf ? journalWeek(weekOf) : latestLoggedWeek(meals);
     const host = document.createElement('div');
     host.className = 'meal-backdrop';
     const close = () => { host.remove(); document.removeEventListener('keydown', onKey); };
@@ -4511,7 +4531,7 @@
       const byDay = new Map();
       for (const m of meals) {
         const slot = eatingSlot(m);
-        if (!slot || slot.day < week.start) continue;
+        if (!slot || slot.day < week.start || slot.day >= week.end) continue;
         const key = slot.day.getTime();
         if (!byDay.has(key)) byDay.set(key, []);
         byDay.get(key).push({ meal: m, ...slot });
@@ -4760,7 +4780,11 @@
         const top = Math.min(vy, yBase), height = Math.max(2, Math.abs(vy - yBase));
         const periodLabel = _biPeriod === 'week' ? `Week of ${p.label}` : p.label;
         const tooltip = escapeHtml(`${periodLabel}|${valFmt(p.v)}${unit ? ` ${unit}` : ''}`);
-        return `<rect class="bi-bar" x="${(cx-barW/2).toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${height.toFixed(1)}" rx="${Math.min(4, barW/2).toFixed(1)}" style="fill:${color}" data-tooltip="${tooltip}"><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
+        // In week view each bar *is* a journal week, so it carries its own
+        // date and a double-click drills into that week rather than into
+        // whatever week it happens to be today.
+        const weekAttr = _biPeriod === 'week' && data[p.i]?.week ? ` data-week="${escapeHtml(data[p.i].week)}"` : '';
+        return `<rect class="bi-bar" x="${(cx-barW/2).toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${height.toFixed(1)}" rx="${Math.min(4, barW/2).toFixed(1)}" style="fill:${color}" data-tooltip="${tooltip}"${weekAttr}><title>${escapeHtml(periodLabel)}: ${valFmt(p.v)}${unit ? ` ${unit}` : ''}</title></rect>`;
       }).join('');
       // Roughly eight labels regardless of span; every other bar is unreadable
       // once the slider is dragged out to a year.
@@ -4883,9 +4907,9 @@
       const asOf = latest && latest !== periodData.at(-1)
         ? `<small class="bi-asof">${unit ? `${unit} · ` : ''}as of ${getLabel(latest)}</small>`
         : unit ? `<small>${unit}</small>` : '';
-      return `<article class="bi-chart-card${drill ? ' drillable' : ''}"${drill ? ` data-drill="${drill}" title="Double-click to see the meals behind this"` : ''}>
+      return `<article class="bi-chart-card${drill ? ' drillable' : ''}"${drill ? ` data-drill="${drill}" title="Double-click a bar to see the meals behind that week"` : ''}>
         <div class="bi-chart-head">
-          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div>${coverage}${drill ? `<div class="bi-drill-hint">Double-click to see the meals →</div>` : ''}</div>
+          <div><div class="bi-chart-label">${label}</div><div class="bi-chart-note">${note}</div><div class="bi-source">Source · ${sourceFor(key)}</div>${coverage}${drill ? `<div class="bi-drill-hint">Double-click a bar to see that week&rsquo;s meals →</div>` : ''}</div>
           <div class="bi-chart-current">${latest ? fmt(latest[key]) : '—'}${asOf}</div>
         </div>
         ${chartBody}
@@ -5119,9 +5143,14 @@
     });
 
     el.querySelectorAll('[data-drill]').forEach(card => {
-      card.addEventListener('dblclick', () => card.dataset.drill === 'timing'
-        ? openTimingDrill()
-        : openMealDrill(card.dataset.drill));
+      card.addEventListener('dblclick', event => {
+        // A bar knows its own week; anywhere else on the card falls back to the
+        // most recent week with meals in it.
+        const bar = event.target.closest?.('[data-week]');
+        const weekOf = bar ? bar.dataset.week : null;
+        if (card.dataset.drill === 'timing') openTimingDrill(weekOf);
+        else openMealDrill(card.dataset.drill, weekOf);
+      });
     });
 
     el.querySelectorAll('[data-biperiod]').forEach(btn => {
