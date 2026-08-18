@@ -4807,7 +4807,6 @@
     // the most recent logged readings so an incomplete current week stays honest.
     const latestWith = key => [...entries].reverse().find(e => e[key] != null);
     const currentWeek  = entries.at(-1) || {};
-    const latestFit    = latestWith('training_hrs');
     const latestStress = latestWith('stress');
     const latestBody   = latestWith('weekly_weight');
     const latestLearn  = latestWith('articles');
@@ -4844,7 +4843,7 @@
     const sourceByKey = {
       slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
       slp_hrv:'oura.py → Notion', rhr:'oura.py → Notion',
-      training_hrs:'Garmin computer-use → Notion', intensity_mins:'Garmin computer-use → Notion', weekly_weight:'Garmin computer-use → Notion',
+      intensity_mins:'Garmin computer-use → Notion', weekly_weight:'Garmin computer-use → Notion',
       strength_mins:'Garmin computer-use → Notion',
       body_fat:'Garmin computer-use → Notion', stress:'Garmin computer-use → Notion', meditation:'Garmin computer-use → Notion',
       garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
@@ -4925,7 +4924,6 @@
       {key:'slp_hrs',       label:'Sleep duration',fmt:fmt1,   unit:'hrs',  inverse:false, hue:'sleep'},
       {key:'slp_hrv',       label:'HRV',           fmt:fmtInt, unit:'ms',   inverse:false, hue:'sleep'},
       {key:'rhr',           label:'Resting HR',    fmt:fmtInt, unit:'bpm',  inverse:true,  hue:'sleep'},
-      {key:'training_hrs',  label:'Training',      fmt:fmt1,   unit:'hrs',  inverse:false, hue:'body'},
       {key:'intensity_mins',label:'Intensity',     fmt:fmtInt, unit:'min',  inverse:false, hue:'body'},
       {key:'strength_mins', label:'Strength',      fmt:fmtInt, unit:'min',  inverse:false, hue:'body'},
       {key:'weekly_weight', label:'Weight',        fmt:fmt1,   unit:'lbs',  inverse:true,  hue:'body'},
@@ -4980,16 +4978,16 @@
     const priorSleepAvg = avgOf(prior8, 'slp_score');
     const sleepMove = pctChange(recentSleepAvg, priorSleepAvg);
     // Same 8-vs-prior-8 shape as the sleep trajectory. An earlier version
-    // compared the latest week against a 4-week *mean*, which one 12-hour week
-    // dragged so far up that this line read "59% lower" while the lead band —
-    // measuring the same week against its median — read "103% above usual".
-    // Two defensible baselines, one flatly contradictory page.
-    const loggedTraining = entries.filter(e => e.training_hrs != null);
-    const recentTraining8 = loggedTraining.slice(-8), priorTraining8 = loggedTraining.slice(-16, -8);
-    const recentTrainingAvg = avgOf(recentTraining8, 'training_hrs');
-    const priorTrainingAvg = avgOf(priorTraining8, 'training_hrs');
-    const trainingMove = pctChange(recentTrainingAvg, priorTrainingAvg);
-    const loggedFields = ['slp_score','slp_hrs','slp_hrv','rhr','training_hrs','stress','weekly_weight','articles'];
+    // compared the latest week against a 4-week *mean*, which one outlier week
+    // dragged so far up that this line contradicted the lead band above it,
+    // which measures the same week against its median. Two defensible
+    // baselines, one flatly contradictory page.
+    const loggedStrength = entries.filter(e => e.strength_mins != null);
+    const recentStrength8 = loggedStrength.slice(-8), priorStrength8 = loggedStrength.slice(-16, -8);
+    const recentStrengthAvg = avgOf(recentStrength8, 'strength_mins');
+    const priorStrengthAvg = avgOf(priorStrength8, 'strength_mins');
+    const strengthMove = pctChange(recentStrengthAvg, priorStrengthAvg);
+    const loggedFields = ['slp_score','slp_hrs','slp_hrv','rhr','strength_mins','stress','weekly_weight','articles'];
     const latestRow = currentWeek;
     const completenessCount = loggedFields.filter(k => latestRow[k] != null).length;
     const completeness = Math.round(completenessCount / loggedFields.length * 100);
@@ -5051,7 +5049,6 @@
           ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'var(--viz-sleep)', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
           ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'var(--viz-sleep)'})}
           ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'var(--viz-sleep)', inverse:true})}
-          ${card({label:'Training', key:'training_hrs', current:latestFit, value:latestFit?fmt1(latestFit.training_hrs):'—', unit:'hours', sub:recentTrainingAvg!=null?`${fmt1(recentTrainingAvg)} hours eight-week average`:'No history yet', color:'var(--viz-body)'})}
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
           ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
@@ -5062,7 +5059,7 @@
 
         <div class="bi-insight-row">
           <div class="bi-insight"><div class="bi-insight-icon">◒</div><div><strong>Sleep trajectory</strong><span>${sleepMove == null ? 'Needs eight recent and eight prior logged sleep scores.' : `${fmtInt(recentSleepAvg)} average sleep score over the latest 8 logged weeks vs ${fmtInt(priorSleepAvg)} over the prior 8 (${Math.abs(sleepMove)}% ${sleepMove>=0?'higher':'lower'}).`}</span></div></div>
-          <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Training load</strong><span>${trainingMove == null ? 'Needs eight recent and eight prior logged training weeks.' : `${fmt1(recentTrainingAvg)} hours per week across the latest 8 logged weeks vs ${fmt1(priorTrainingAvg)} over the prior 8 (${Math.abs(trainingMove)}% ${trainingMove>=0?'higher':'lower'}).`}</span></div></div>
+          <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Strength trajectory</strong><span>${strengthMove == null ? 'Needs eight recent and eight prior logged strength weeks.' : `${fmtInt(recentStrengthAvg)} minutes per week across the latest 8 logged weeks vs ${fmtInt(priorStrengthAvg)} over the prior 8 (${Math.abs(strengthMove)}% ${strengthMove>=0?'higher':'lower'}) · goal ${STRENGTH_TARGET}.`}</span></div></div>
         </div>
 
         <div class="bi-period-row">
@@ -5087,7 +5084,6 @@
 
         <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
         <div class="bi-grid">
-          ${chartCard(`${isAgg?'Total training time':'Training time'}`, 'Logged endurance and strength work', 'training_hrs', 'var(--viz-body)', v=>(+v).toFixed(1), true, 'hours')}
           ${chartCard(`${isAgg?'Total intensity':'Intensity'}`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
           ${chartCard('Strength training', `Minutes per week${isAgg?', averaged within each period':''} · goal ${STRENGTH_TARGET}`, 'strength_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes', STRENGTH_TARGET)}
           ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'lbs')}
