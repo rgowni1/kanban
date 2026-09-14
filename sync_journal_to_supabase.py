@@ -123,6 +123,7 @@ def page_to_row(page, user_id, synced_at):
         "garmin_tdee": number("Garmin TDEE"),
         "non_profile_meals": rollup_number("FL Non Profile"),
         "dcp_meals": rollup_number("FL DCP"),
+        "drinks": rollup_number("FL Drinks"),
     }
 
     # The Notion food-log formulas average only the days that were actually
@@ -143,6 +144,7 @@ def page_to_row(page, user_id, synced_at):
     if row["consumed_cals"] is None:
         row["non_profile_meals"] = None
         row["dcp_meals"] = None
+        row["drinks"] = None
 
     return row
 
@@ -246,6 +248,9 @@ def fetch_food_log_rows(token, database_id, user_id):
             def formula_flag(name):
                 return bool(((props.get(name) or {}).get("formula") or {}).get("number"))
 
+            def formula_value(name):
+                return ((props.get(name) or {}).get("formula") or {}).get("number")
+
             def select_name(name):
                 return ((props.get(name) or {}).get("select") or {}).get("name")
 
@@ -267,6 +272,7 @@ def fetch_food_log_rows(token, database_id, user_id):
                 "is_non_profile": formula_flag("Is Non Profile"),
                 "is_dcp": formula_flag("Is DCP?"),
                 "is_cooked": formula_flag("Is Cooked"),
+                "drinks": formula_value("# of Drinks"),
                 "source_updated_at": page.get("last_edited_time"),
                 "synced_at": synced_at,
             })
@@ -381,6 +387,30 @@ def merge_derived(rows, timing):
     return sum(1 for row in rows if row["first_meal_mins"] is not None)
 
 
+# Columns introduced by a migration that may not have been applied yet. A
+# Supabase error aborts the whole run, so one unknown column would otherwise
+# stop the journal *and* the meals from syncing at all until someone found a
+# working Management token. Probe once, drop what is missing, say so.
+OPTIONAL_COLUMNS = ("drinks",)
+
+
+def drop_missing_columns(supabase_url, secret_key, table, rows):
+    present = {k for row in rows for k in row}
+    for column in OPTIONAL_COLUMNS:
+        if column not in present:
+            continue
+        status, _ = http(
+            f"{supabase_url}/rest/v1/{table}?select={column}&limit=1",
+            headers={"apikey": secret_key, "Authorization": f"Bearer {secret_key}"},
+        )
+        if status < 400:
+            continue
+        print(f"  {table}.{column} does not exist yet — skipping it (run the migration).", flush=True)
+        for row in rows:
+            row.pop(column, None)
+    return rows
+
+
 def upsert_supabase_rows(supabase_url, secret_key, rows, table="journal_entries", on_conflict="user_id,week"):
     headers = {
         "apikey": secret_key,
@@ -460,7 +490,7 @@ def main():
     synced = upsert_supabase_rows(
         required["SUPABASE_URL"],
         required["SUPABASE_SECRET_KEY"],
-        rows,
+        drop_missing_columns(required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], "journal_entries", rows),
     )
     print(f"Upserted {synced} journal entries into Supabase.")
 
@@ -469,7 +499,7 @@ def main():
     synced_meals = upsert_supabase_rows(
         required["SUPABASE_URL"],
         required["SUPABASE_SECRET_KEY"],
-        meals,
+        drop_missing_columns(required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], "food_log_entries", meals),
         table="food_log_entries",
         on_conflict="user_id,notion_page_id",
     )

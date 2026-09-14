@@ -24,7 +24,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_kw2DYRs7qCPz74v-tzR12w_TDreloum
 
 // --- Targets. Tune these; everything below is derived from them. ------------
 const TARGETS = {
-  // Non-profile = under 20% of calories from protein on a >=200 kcal meal.
+  // Non-profile = under 25% of calories from protein on a >=200 kcal meal.
   // Recent weeks have run 3-6, so 4 is a stretch rather than a formality.
   nonProfilePerWeek: 4,
   // Share of the week's meals actually cooked (Notion's Source = Home flag,

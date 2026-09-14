@@ -1415,6 +1415,10 @@
   .meal-macros b { display: block; color: var(--text); font-size: 12.5px; font-weight: 650; line-height: 1.2; }
   .meal-mac { display: block; margin-top: 1px; color: var(--muted); font-size: 9.5px; }
   .meal-over { color: var(--viz-fuel); font-weight: 650; }
+  /* The number the whole rule turns on, so it gets its own line rather than
+     being left to be inferred from the protein grams beside the calories. */
+  .meal-pct { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; font-weight: 650; }
+  .meal-pct.under { color: var(--viz-fuel); }
   .meal-edge { color: var(--viz-fuel); font-weight: 700; }
   /* In the dessert drill the name wraps rather than truncating, so the marked
      word is never the part the ellipsis ate. */
@@ -4240,6 +4244,18 @@
     return '🍽️';
   };
   const MEAL_TYPE_EMOJI = { Breakfast: '🌅', Lunch: '🌞', Dinner: '🌙', Snack: '🍿' };
+  // Half a glass of wine logs as 0.5, so drinks are fractional — but most
+  // weeks are whole numbers and "9.0 drinks" reads like a spreadsheet.
+  // Notion's `Is Non Profile` formula tests `< 0.25`. Naming the number here
+  // keeps the explanation and the rule in one place: the page spent months
+  // saying 20% while every count behind it was computed at 25%.
+  const NON_PROFILE_PCT = 25;
+  const proteinPct = m => {
+    const kcal = Number(m.calories), p = Number(m.protein_g);
+    if (!kcal || !Number.isFinite(p)) return null;
+    return Math.round(p * 4 / kcal * 1000) / 10;
+  };
+  const fmtDrinks = v => v == null ? '—' : (+v % 1 === 0 ? String(+v) : (+v).toFixed(1));
   const SOURCE_EMOJI = { Home: '🏠', Restaurant: '🍴', Other: '📦' };
 
   // === Meal timing =========================================================
@@ -4321,7 +4337,7 @@
     'non-profile': {
       emoji: '🍔',
       title: 'Non-profile meals',
-      def: 'Under <b>20% of calories from protein</b>, on a meal of 200 kcal or more — a meal that did not earn its calories. Size-independent, so a big high-protein plate is fine and a small pastry is not.',
+      def: `Under <b>${NON_PROFILE_PCT}% of calories from protein</b>, on a meal of 200 kcal or more — a meal that did not earn its calories. Size-independent, so a big high-protein plate is fine and a small pastry is not. Every row shows its own share.`,
       match: m => m.is_non_profile,
       // Protein is the number that fell short, so it is the one to call out.
       callout: m => ['protein_g'],
@@ -4334,6 +4350,14 @@
       match: m => m.is_dcp,
       callout: m => ['carbs_g'],
       none: 'No desserts or pastries',
+    },
+    drinks: {
+      emoji: '🍷',
+      title: 'Drinks',
+      def: 'Counted from the <b>Drinks Extract</b> field on each meal, so it follows what you logged rather than guessing from the name. Fractional — half a glass is <b>0.5</b>.',
+      match: m => (Number(m.drinks) || 0) > 0,
+      callout: m => [],
+      none: 'No drinks',
     },
     cooked: {
       emoji: '🍳',
@@ -4398,6 +4422,7 @@
               kind !== 'dcp' && m.is_dcp ? '🍪 dessert' : '',
               kind === 'cooked' && m.is_cooked_override === true ? '✎ marked cooked' : '',
               off ? '✎ not cooked' : '',
+              Number(m.drinks) ? `🍷 ${fmtDrinks(m.drinks)}` : '',
             ].filter(Boolean).join(' · ');
             const action = kind !== 'cooked' ? '' : `<button type="button" class="meal-mark" data-meal-id="${escapeHtml(m.id)}" data-cooked="${off ? 'true' : 'false'}">${off ? 'undo' : 'not cooked'}</button>`;
             // The dessert is usually one clause of a longer meal, so in that
@@ -4410,7 +4435,10 @@
                 <span class="meal-meta">${tags}</span>
               </span>
               ${action}
-              <span class="meal-macros"><b>${num(m.calories)}</b><span class="meal-mac">${macros}</span></span>
+              <span class="meal-macros"><b>${num(m.calories)}</b><span class="meal-mac">${macros}</span>${
+                proteinPct(m) == null ? '' :
+                `<span class="meal-pct${proteinPct(m) < NON_PROFILE_PCT ? ' under' : ''}">${proteinPct(m)}% protein</span>`
+              }</span>
             </li>`;
           }).join('');
       }).join('');
@@ -4425,8 +4453,11 @@
         : stat(counted.filter(x => x.meal.source === 'Restaurant').length, '🍴 out');
       // These calories belong to the whole meal, not to the dessert inside it,
       // so the dessert drill does not get to call them dessert calories.
+      const headlineStat = kind === 'drinks'
+        ? stat(fmtDrinks(counted.reduce((n, x) => n + (Number(x.meal.drinks) || 0), 0)), 'drinks')
+        : stat(counted.length, kind === 'dcp' ? 'items' : 'meals');
       return `<div class="meal-tally">
-          ${stat(counted.length, kind === 'dcp' ? 'items' : 'meals')}
+          ${headlineStat}
           ${stat(`${dayCount}/${week.elapsed}`, 'days')}
           ${stat(kcal.toLocaleString(), kind === 'dcp' ? 'kcal in those meals' : 'kcal')}
           ${lastStat}
@@ -4850,6 +4881,7 @@
       avg_protein:'Notion food log', calorie_deficit:'Notion formula',
       non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
       cooked_meals:'Notion food log rollup', total_meals:'Notion food log',
+      drinks:'Notion food log rollup',
       first_meal_mins:'Derived in sync from meal times', last_meal_mins:'Derived in sync from meal times',
       eating_window_hrs:'Derived in sync from meal times',
       articles:'Readwise via oura.py → Notion', podcasts:'Readwise via oura.py → Notion'
@@ -4932,6 +4964,7 @@
       // Treated as lower-is-better: off-profile meals read as drift from the plan.
       {key:'non_profile_meals', label:'Non-profile meals', fmt:fmtInt, unit:'', inverse:true, hue:'fuel'},
       {key:'cooked_meals',  label:'Cooked at home', fmt:fmtInt, unit:'',    inverse:false, hue:'fuel'},
+      {key:'drinks',        label:'Drinks',        fmt:fmt1,   unit:'',    inverse:true,  hue:'fuel'},
       // A shorter eating window is the direction of travel, so this reads as
       // lower-is-better. First/last meal are deliberately absent: a "12% above
       // usual" on a clock time is not a sentence anyone can act on.
@@ -5096,8 +5129,9 @@
           ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
           ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
-          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under 20% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
+          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
+          ${chartCard(isAgg?'Total drinks':'Drinks', `🍷 Counted from the food log${isAgg?' · total for the period':' · per week'}`, 'drinks', 'var(--viz-fuel)', fmtDrinks, true, 'drinks', null, 'drinks')}
           ${chartCard(isAgg?'Total cooked at home':'Cooked at home', `🏠 Logged with Source = Home${isAgg?' · total for the period':' · per week'}`, 'cooked_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'cooked')}
         </div>
 
