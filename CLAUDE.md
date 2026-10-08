@@ -1,6 +1,6 @@
-# Kanban
+# Personal OS
 
-Personal kanban for Rocky. Supabase-backed, static frontend on GitHub Pages, local MCP server for Claude to read/write tasks.
+Personal OS for Rocky (formerly “kanban” / Hail Mary). Supabase-backed intelligence dashboard on GitHub Pages. Task board code still exists in-repo but is no longer the product surface; MCP task tools remain for optional Claude use.
 
 ## Architecture
 
@@ -24,7 +24,6 @@ Auth: Supabase email+password (single user). Anon publishable key is committed t
 | `.mcp.json` | Wires `mcp_server.py` as the `kanban` MCP server for Claude Code in this directory. |
 | `run_sql.py` | Runs arbitrary SQL via Supabase Management API. Uses `SUPABASE_ACCESS_TOKEN` from `.env`. |
 | `set_password.py` | One-shot admin-API call to set the kanban user's password. |
-| `import_to_supabase.py` | One-time Notion → Supabase importer. Already run; preserved for reference. |
 | `sync_journal_to_supabase.py` | Idempotent Notion Logging Journal → Supabase sync. Also syncs individual meals and derives weekly meal timing. Used locally and by GitHub Actions. |
 | `scriptable/agentos-food.js` | iOS Scriptable home-screen widget. Reads the current week's meals straight from Supabase (password grant, credentials in the iOS keychain) and frames them as budget remaining. Read-only. |
 | `supabase/migrations/` | Checked-in database migrations, including the authenticated `journal_entries` table and RLS policy. |

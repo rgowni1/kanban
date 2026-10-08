@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Hail Mary</title>
+<title>Personal OS</title>
 <script>
   // Resolve theme before first paint (no flash). 'system' follows the OS.
   (function () {
@@ -1511,25 +1511,75 @@
   table.weeks-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   table.weeks-table td .points { color: var(--accent); font-weight: 600; }
   table.weeks-table td .breakdown { color: var(--muted); font-size: 12px; }
+
+  /* Journal word clouds */
+  .bi-cloud-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 8px 0 28px;
+  }
+  .bi-cloud-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    min-height: 220px;
+  }
+  .bi-cloud-card h4 {
+    margin: 0 0 4px;
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .bi-cloud-card .bi-cloud-sub {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .bi-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 10px;
+    min-height: 140px;
+    line-height: 1.15;
+  }
+  .bi-cloud span {
+    display: inline-block;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    opacity: 0.92;
+  }
+  .bi-cloud.highs span { color: var(--viz-sleep); }
+  .bi-cloud.lows span { color: #c45c3e; }
+  [data-theme="dark"] .bi-cloud.lows span { color: #e08a6e; }
+  .bi-cloud-empty {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 36px 12px;
+  }
+  .bi-cloud-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 4px 0 10px;
+  }
+  @media (max-width: 900px) {
+    .bi-cloud-row { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
   <nav class="sidebar" id="sidebar" hidden>
-    <div class="sidebar-brand"><span class="brand-dot"></span> Hail Mary</div>
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">Task Management</div>
-      <button class="sidebar-item" data-target="today"><span class="icon">☀️</span> Today</button>
-      <button class="sidebar-item" data-target="this-week"><span class="icon">✅</span> This Week</button>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">Projects</div>
-      <button class="sidebar-item project-item active" data-project="" data-target="kanban"><span class="icon">🗂️</span> All Tasks</button>
-      <div id="project-list"></div>
-      <button class="sidebar-item sidebar-newproject" id="new-project-btn"><span class="icon">＋</span> New Project</button>
-    </div>
+    <div class="sidebar-brand"><span class="brand-dot"></span> Personal OS</div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Intelligence</div>
-      <button class="sidebar-item" data-target="personal-stats"><span class="icon">🏃</span> Personal Intelligence</button>
+      <button class="sidebar-item active" data-target="personal-stats"><span class="icon">🏃</span> Personal Intelligence</button>
       <button class="sidebar-item" data-target="stats"><span class="icon">📊</span> Work Productivity</button>
     </div>
   </nav>
@@ -1537,14 +1587,14 @@
     <header hidden>
       <div class="title-group">
         <div class="title-stack">
-          <div class="eyebrow">Hail Mary</div>
-          <h1 id="page-title">Hail Mary</h1>
+          <div class="eyebrow">Personal OS</div>
+          <h1 id="page-title">Personal Intelligence</h1>
         </div>
-        <button class="focus-btn" id="focus-btn" title="Switch to Focus view">
+        <button class="focus-btn" id="focus-btn" title="Switch to Focus view" hidden>
           <span>🎯 Focus</span>
           <span class="focus-count" id="focus-btn-count">0</span>
         </button>
-        <div class="ctx-group" id="header-ctx">
+        <div class="ctx-group" id="header-ctx" hidden>
           <button class="ctx-btn ctx-work" data-context="Work" title="Filter to Work">
             <span>💼 Work</span>
           </button>
@@ -1556,7 +1606,7 @@
       <div class="actions">
         <span class="ghost" id="status" style="font-size:12px;padding:6px 10px;color:var(--muted)"></span>
         <button class="ghost" id="theme-toggle" title="Toggle theme">🖥️</button>
-        <button class="ghost" id="clear-done" title="Archive all completed tasks — they leave the board but stay in capacity stats">Clear done</button>
+        <button class="ghost" id="clear-done" title="Archive all completed tasks — they leave the board but stay in capacity stats" hidden>Clear done</button>
         <button class="ghost" id="sign-out" title="Sign out">Sign out</button>
       </div>
     </header>
@@ -1591,8 +1641,8 @@
 
   <div id="auth" class="auth-overlay">
     <div class="auth-card">
-      <h2>Hail Mary</h2>
-      <p class="subtitle">Sign in</p>
+      <h2>Personal OS</h2>
+      <p class="subtitle">Personal Intelligence</p>
       <form id="auth-form">
         <input type="email" placeholder="you@example.com" required autocomplete="email" />
         <input type="password" placeholder="password" required autocomplete="current-password" />
@@ -1858,7 +1908,7 @@
     tasks: [],
     filter: { context: "Work", timing: "all", staleness: "all", needsEffort: false },
     groupBy: "status",
-    view: "today",
+    view: "personal-stats",
     project: null,            // null = All Tasks (top-level); otherwise a project (parent task) id
     focusOrder: loadFocusOrder(),
   };
@@ -1967,23 +2017,23 @@
     document.getElementById('this-week-view').hidden = !isThisWeek;
 
     document.getElementById('page-title').textContent =
-      isToday ? 'Today' : isThisWeek ? 'This Week' : isStats ? 'Work Productivity' : isPersonalStats ? 'Personal Intelligence' : 'Hail Mary';
+      isToday ? 'Today' : isThisWeek ? 'This Week' : isStats ? 'Work Productivity' : isPersonalStats ? 'Personal Intelligence' : 'Personal OS';
     const focusBtn = document.getElementById('focus-btn');
     focusBtn.hidden = !isKanbanPage;
     focusBtn.classList.toggle('active', isFocus);
 
     document.querySelectorAll('#sidebar .sidebar-item').forEach(b => {
-      const isActive = (b.dataset.target === 'today' && isToday)
-                    || (b.dataset.target === 'kanban' && isKanbanPage)
-                    || (b.dataset.target === 'stats' && isStats)
-                    || (b.dataset.target === 'personal-stats' && isPersonalStats)
-                    || (b.dataset.target === 'this-week' && isThisWeek);
+      const isActive = (b.dataset.target === 'stats' && isStats)
+                    || (b.dataset.target === 'personal-stats' && isPersonalStats);
       b.classList.toggle('active', isActive);
     });
 
     updateFocusBtnCount();
     syncHeaderCtx();
-    renderSidebarProjects();
+    // Task chrome stays dormant — Intelligence is the product shell.
+    document.getElementById('focus-btn').hidden = true;
+    document.getElementById('header-ctx').hidden = true;
+    document.getElementById('clear-done').hidden = true;
 
     if (isToday) {
       renderToday();
@@ -2029,7 +2079,7 @@
         currentUser = null;
         state.tasks = [];
         state.filter = { context: "all", timing: "all", staleness: "all", needsEffort: false };
-        state.view = "today";
+        state.view = "personal-stats";
         showAuth();
       }
     });
@@ -4147,6 +4197,85 @@
     try { localStorage.setItem('kanban.biSpan', JSON.stringify(_biSpan)); } catch { /* private mode */ }
   };
   const STRENGTH_TARGET = 120; // minutes of strength work per week
+  let _biCloudScope = (() => {
+    try { return localStorage.getItem('kanban.biCloudScope') || 'ytd'; } catch { return 'ytd'; }
+  })();
+  const setBiCloudScope = scope => {
+    _biCloudScope = scope;
+    try { localStorage.setItem('kanban.biCloudScope', scope); } catch { /* private mode */ }
+  };
+
+  // Mirror personalprojects/dashboard.py journal stopwords for High/Low clouds.
+  const JOURNAL_STOPWORDS = new Set([
+    'a','an','the','and','or','but','if','then','else','when','where','who','what','how','why',
+    'is','are','was','were','be','been','being','have','has','had','do','does','did','will','would',
+    'could','should','may','might','must','shall','can','to','of','in','on','at','by','for','from',
+    'with','as','into','out','over','under','again','further','once','here','there','all','any',
+    'both','each','few','more','most','other','some','such','no','nor','not','only','own','same',
+    'so','than','too','very','just','also','this','that','these','those','it','its','i','me','my',
+    'we','our','you','your','he','she','they','them','their','week','weekly','including','while',
+    'during','felt','feeling','although','despite','however','towards','upon','particularly',
+    'specifically','overall','throughout','significant','highlighted','highlighting','contributing',
+    'contributed','noted','positive','negative','included','remains','which','still','first','last',
+    'new','old','whether','within','without','time','times','day','days','good','great','well',
+    'little','much','many','like','led','due','one','amp','via','vs','per',
+  ]);
+
+  function journalWordCounts(texts) {
+    const counts = new Map();
+    for (const raw of texts) {
+      if (!raw) continue;
+      const tokens = String(raw)
+        .toLowerCase()
+        .replace(/[^a-z0-9'\-\s]/g, ' ')
+        .split(/\s+/)
+        .map(t => t.replace(/^'+|'+$/g, ''))
+        .filter(t => t.length > 2 && !JOURNAL_STOPWORDS.has(t) && !/^\d+$/.test(t));
+      for (const t of tokens) counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 60);
+  }
+
+  function renderWordCloudHtml(words, tone) {
+    if (!words.length) {
+      return `<div class="bi-cloud-empty">Not enough journal text in this window yet.</div>`;
+    }
+    const max = words[0][1];
+    const min = words[words.length - 1][1];
+    const span = Math.max(1, max - min);
+    return `<div class="bi-cloud ${tone}">${words.map(([word, count]) => {
+      const t = (count - min) / span;
+      const size = (12 + t * 22).toFixed(1);
+      const weight = t > 0.66 ? 700 : t > 0.33 ? 600 : 500;
+      const opacity = (0.55 + t * 0.45).toFixed(2);
+      return `<span style="font-size:${size}px;font-weight:${weight};opacity:${opacity}" title="${count}×">${escapeHtml(word)}</span>`;
+    }).join('')}</div>`;
+  }
+
+  function cloudWindowEntries(entries) {
+    const withText = entries.filter(e => e.journal_high || e.journal_low);
+    if (!withText.length) return { rows: [], label: 'No journal narrative yet' };
+    const last = withText[withText.length - 1];
+    const d = new Date(last.week + 'T12:00:00');
+    if (_biCloudScope === 'all') {
+      return { rows: withText, label: `All time · ${withText.length} weeks` };
+    }
+    if (_biCloudScope === 'quarter') {
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      const y = d.getFullYear();
+      const rows = withText.filter(e => {
+        const x = new Date(e.week + 'T12:00:00');
+        return x.getFullYear() === y && Math.floor(x.getMonth() / 3) + 1 === q;
+      });
+      return { rows, label: `Q${q} ${y} · ${rows.length} weeks` };
+    }
+    // ytd
+    const y = d.getFullYear();
+    const rows = withText.filter(e => new Date(e.week + 'T12:00:00').getFullYear() === y);
+    return { rows, label: `${y} year to date · ${rows.length} weeks` };
+  }
 
   function fetchJournal() {
     if (_journalData) return Promise.resolve(_journalData);
@@ -5033,6 +5162,13 @@
     const spanMax   = Math.max(spanCfg.min, Math.min(spanCfg.max, available));
     const spanValue = Math.min(_biSpan[_biPeriod], spanMax);
 
+    const cloudWin = cloudWindowEntries(entries);
+    const highWords = journalWordCounts(cloudWin.rows.map(e => e.journal_high).filter(Boolean));
+    const lowWords = journalWordCounts(cloudWin.rows.map(e => e.journal_low).filter(Boolean));
+    const cloudToggle = [['ytd','Year to date'],['quarter','This quarter'],['all','All time']]
+      .map(([k, label]) => `<button class="bi-toggle-btn${_biCloudScope===k?' active':''}" data-bicloud="${k}">${label}</button>`)
+      .join('');
+
     const toggleHtml = ['week','month','quarter'].map(p =>
       `<button class="bi-toggle-btn${_biPeriod===p?' active':''}" data-biperiod="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</button>`
     ).join('');
@@ -5093,6 +5229,24 @@
         <div class="bi-insight-row">
           <div class="bi-insight"><div class="bi-insight-icon">◒</div><div><strong>Sleep trajectory</strong><span>${sleepMove == null ? 'Needs eight recent and eight prior logged sleep scores.' : `${fmtInt(recentSleepAvg)} average sleep score over the latest 8 logged weeks vs ${fmtInt(priorSleepAvg)} over the prior 8 (${Math.abs(sleepMove)}% ${sleepMove>=0?'higher':'lower'}).`}</span></div></div>
           <div class="bi-insight"><div class="bi-insight-icon">↗</div><div><strong>Strength trajectory</strong><span>${strengthMove == null ? 'Needs eight recent and eight prior logged strength weeks.' : `${fmtInt(recentStrengthAvg)} minutes per week across the latest 8 logged weeks vs ${fmtInt(priorStrengthAvg)} over the prior 8 (${Math.abs(strengthMove)}% ${strengthMove>=0?'higher':'lower'}) · goal ${STRENGTH_TARGET}.`}</span></div></div>
+        </div>
+
+        <div class="bi-section-heading"><h3>Journal word cloud</h3><p>Themes from weekly High / Low notes in the Logging Journal</p></div>
+        <div class="bi-cloud-controls">
+          <span class="bi-cloud-sub" style="margin:0;color:var(--muted);font-size:12px">${escapeHtml(cloudWin.label)}</span>
+          <div class="bi-toggle">${cloudToggle}</div>
+        </div>
+        <div class="bi-cloud-row">
+          <div class="bi-cloud-card">
+            <h4>Highs</h4>
+            <p class="bi-cloud-sub">Energizers and wins</p>
+            ${renderWordCloudHtml(highWords, 'highs')}
+          </div>
+          <div class="bi-cloud-card">
+            <h4>Lows</h4>
+            <p class="bi-cloud-sub">Stressors and friction</p>
+            ${renderWordCloudHtml(lowWords, 'lows')}
+          </div>
         </div>
 
         <div class="bi-period-row">
@@ -5186,6 +5340,12 @@
     el.querySelectorAll('[data-biperiod]').forEach(btn => {
       btn.addEventListener('click', () => {
         _biPeriod = btn.dataset.biperiod;
+        renderPersonalStatsPage();
+      });
+    });
+    el.querySelectorAll('[data-bicloud]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setBiCloudScope(btn.dataset.bicloud);
         renderPersonalStatsPage();
       });
     });

@@ -102,6 +102,8 @@ def page_to_row(page, user_id, synced_at):
         "rhr": number("RHR"),
         "avg_sleep_time": rich_text("Avg Sleep Time"),
         "avg_wake_time": rich_text("Avg Wake Time"),
+        "journal_high": rich_text("High"),
+        "journal_low": rich_text("Low"),
         "run_miles": number("Run Miles"),
         "bike_miles": number("Bike Miles"),
         "swim_yards": number("Swim Yards"),
@@ -125,6 +127,12 @@ def page_to_row(page, user_id, synced_at):
         "dcp_meals": rollup_number("FL DCP"),
         "drinks": rollup_number("FL Drinks"),
     }
+
+    # Placeholder stubs from empty journal templates are not real narrative.
+    for key in ("journal_high", "journal_low"):
+        val = (row.get(key) or "").strip()
+        if not val or val.lower() == "no content":
+            row[key] = None
 
     # The Notion food-log formulas average only the days that were actually
     # logged, so a week where logging was abandoned after one meal reports a
