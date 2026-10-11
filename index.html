@@ -4973,11 +4973,6 @@
     const latestFood   = latestWith('consumed_cals');
     const latestTiming = latestWith('first_meal_mins');
     const latestBurn   = latestWith('garmin_tdee');
-    const avgLastLogged = (key, count = 8) => avgOf(entries.filter(e => e[key] != null).slice(-count), key);
-    const avgSlp8 = avgLastLogged('slp_score');
-    const avgSlpHrs8 = avgLastLogged('slp_hrs');
-    const avgHrv8 = avgLastLogged('slp_hrv');
-    const avgRhr8 = avgLastLogged('rhr');
     const timeToMinutes = value => {
       const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
       if (!match) return null;
@@ -4993,12 +4988,14 @@
       const period = hour24 >= 12 ? 'PM' : 'AM';
       return `${hour24 % 12 || 12}:${String(minute).padStart(2, '0')} ${period}`;
     };
-    const loggedSleepTimes = entries.map(e => timeToMinutes(e.avg_sleep_time)).filter(v => v != null).slice(-8);
-    const avgSleepTime8 = loggedSleepTimes.length
-      ? formatClock(loggedSleepTimes.reduce((sum, value) => sum + value, 0) / loggedSleepTimes.length)
-      : null;
     const currentSleepTime = formatClock(timeToMinutes(currentWeek.avg_sleep_time));
     const wkLbl = e => { const d = parseLocalDate(e.week); return `${d.getMonth()+1}/${d.getDate()}`; };
+    const previousWith = (key, current) => [...entries].reverse().find(e => e !== current && e[key] != null);
+    const priorWeekSub = (key, fmt, empty = 'No prior week yet') => {
+      const prev = previousWith(key, currentWeek);
+      if (!prev || prev[key] == null) return empty;
+      return `${fmt(prev[key])} prior week (${wkLbl(prev)})`;
+    };
 
     const sourceByKey = {
       slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
@@ -5017,17 +5014,36 @@
     };
     const sourceFor = key => sourceByKey[key] || 'Notion journal';
 
-    const previousWith = (key, current) => [...entries].reverse().find(e => e !== current && e[key] != null);
     const deltaValue = value => Number.isInteger(value) ? String(value) : (+value).toFixed(1);
     const delta = (key, current, inverse = false, suffix = '', unit = '') => {
       if (!current || current[key] == null) return `<span class="bi-delta" data-tooltip="Comparison|No current value is logged" title="No current value is logged">No trend</span>`;
       const prev = previousWith(key, current);
       if (!prev || prev[key] == null) return `<span class="bi-delta" data-tooltip="Comparison|No previous logged week" title="No previous logged week">First reading</span>`;
+      const weekRange = `${wkLbl(prev)}→${wkLbl(current)}`;
+
+      // Clock fields (avg sleep time) compare in minutes, not as numeric strings.
+      if (key === 'avg_sleep_time') {
+        const currMins = timeToMinutes(current[key]);
+        const prevMins = timeToMinutes(prev[key]);
+        if (currMins == null || prevMins == null) {
+          return `<span class="bi-delta" data-tooltip="Comparison|No previous logged week" title="No previous logged week">First reading</span>`;
+        }
+        const d = currMins - prevMins;
+        const prevClock = formatClock(prevMins);
+        const currClock = formatClock(currMins);
+        const comparison = `Week of ${wkLbl(prev)}|${prevClock} → ${currClock}`;
+        const title = `Compared with previous logged week (${wkLbl(prev)}): ${prevClock} → ${currClock}`;
+        if (Math.abs(d) < 8) return `<span class="bi-delta" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">→ steady · ${weekRange}</span>`;
+        // Later bedtime is usually worse for this metric.
+        const good = d < 0;
+        const mins = Math.abs(Math.round(d));
+        return `<span class="bi-delta ${good?'good':'bad'}" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">${d>0?'↑':'↓'} ${mins}m · ${weekRange}</span>`;
+      }
+
       const d = current[key] - prev[key];
       const unitText = unit ? ` ${unit.replace('/ 100','points')}` : suffix;
       const comparison = `Week of ${wkLbl(prev)}|${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
       const title = `Compared with previous logged week (${wkLbl(prev)}): ${deltaValue(prev[key])} → ${deltaValue(current[key])}${unitText}`;
-      const weekRange = `${wkLbl(prev)}→${wkLbl(current)}`;
       if (Math.abs(d) < .05) return `<span class="bi-delta" data-tooltip="${escapeHtml(comparison)}" title="${escapeHtml(title)}">→ steady · ${weekRange}</span>`;
       const good = inverse ? d < 0 : d > 0;
       const shown = Math.abs(d) >= 10 ? Math.round(Math.abs(d)) : Math.abs(d).toFixed(1);
@@ -5036,7 +5052,7 @@
     const card = ({label, key, current, value, unit='', sub, color, inverse=false, suffix='', comparisonLabel=''}) => `
       <div class="bi-summary-card" style="--metric:${color}">
         <div class="bi-summary-top"><div class="bi-summary-label">${label}</div>${comparisonLabel
-          ? `<span class="bi-delta" data-tooltip="Context|${escapeHtml(comparisonLabel)}" title="${escapeHtml(comparisonLabel)}">8-wk avg</span>`
+          ? `<span class="bi-delta" data-tooltip="Context|${escapeHtml(comparisonLabel)}" title="${escapeHtml(comparisonLabel)}">Note</span>`
           : delta(key, current, inverse, suffix, unit)}</div>
         <div class="bi-summary-value">${value}<span class="bi-summary-unit">${unit}</span></div>
         <div class="bi-summary-sub">${current && current.week ? `Week of ${wkLbl(current)} · ` : ''}${sub}</div>
@@ -5213,11 +5229,11 @@
         </div>
 
         <div class="bi-summary-grid">
-          ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:avgSlp8!=null?`${fmtInt(avgSlp8)} eight-week average`:'No history yet', color:'var(--viz-sleep)'})}
-          ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:avgSlpHrs8!=null?`${fmt1(avgSlpHrs8)} hours eight-week average`:'No history yet', color:'var(--viz-sleep)'})}
-          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:avgSleepTime8?`${avgSleepTime8} eight-week average`:'No average bedtime synced yet', color:'var(--viz-sleep)', comparisonLabel:avgSleepTime8?`Average bedtime across the last eight logged weeks: ${avgSleepTime8}`:'Average sleep time has not been synced yet'})}
-          ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:avgHrv8!=null?`${fmtInt(avgHrv8)} ms eight-week average`:'No recovery history', color:'var(--viz-sleep)'})}
-          ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:avgRhr8!=null?`${fmtInt(avgRhr8)} bpm eight-week average`:'No heart-rate history', color:'var(--viz-sleep)', inverse:true})}
+          ${card({label:'Sleep score', key:'slp_score', current:currentWeek, value:currentWeek.slp_score!=null?fmtInt(currentWeek.slp_score):'Pending', sub:priorWeekSub('slp_score', fmtInt), color:'var(--viz-sleep)'})}
+          ${card({label:'Sleep duration', key:'slp_hrs', current:currentWeek, value:currentWeek.slp_hrs!=null?fmt1(currentWeek.slp_hrs):'Pending', unit:currentWeek.slp_hrs!=null?'hours':'', sub:priorWeekSub('slp_hrs', v => `${fmt1(v)} hours`), color:'var(--viz-sleep)'})}
+          ${card({label:'Average sleep time', key:'avg_sleep_time', current:currentWeek, value:currentSleepTime||'Pending', sub:priorWeekSub('avg_sleep_time', v => formatClock(timeToMinutes(v)) || v, 'No prior bedtime yet'), color:'var(--viz-sleep)'})}
+          ${card({label:'HRV', key:'slp_hrv', current:currentWeek, value:currentWeek.slp_hrv!=null?fmtInt(currentWeek.slp_hrv):'Pending', unit:currentWeek.slp_hrv!=null?'ms':'', sub:priorWeekSub('slp_hrv', v => `${fmtInt(v)} ms`, 'No recovery history'), color:'var(--viz-sleep)'})}
+          ${card({label:'Resting heart rate', key:'rhr', current:currentWeek, value:currentWeek.rhr!=null?fmtInt(currentWeek.rhr):'Pending', unit:currentWeek.rhr!=null?'bpm':'', sub:priorWeekSub('rhr', v => `${fmtInt(v)} bpm`, 'No heart-rate history'), color:'var(--viz-sleep)', inverse:true})}
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
           ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
