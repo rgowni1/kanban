@@ -453,54 +453,20 @@ def main():
     if missing:
         sys.exit(f"Missing environment variables: {', '.join(missing)}")
 
-    print("Fetching journal entries from Notion...", flush=True)
-    rows = fetch_notion_rows(
-        required["NOTION_TOKEN"],
-        required["NOTION_JOURNAL_DB_ID"],
-        required["KANBAN_USER_ID"],
-    )
-    print(f"Fetched {len(rows)} dated journal entries.", flush=True)
-    seen = {}
-    for row in rows:
-        seen[row["week"]] = row
-    rows = list(seen.values())
-    if len(rows) != len(seen):
-        print(f"Deduplicated to {len(rows)} unique weeks.", flush=True)
-
-    # Individual meals, so the dashboard can drill into a weekly rollup and so
-    # the weekly first/last meal times can be derived — Notion has rollups for
-    # the meal counts but none for timing. Fetched before the journal upsert
-    # because the timing columns ride along on those same rows. Skipped rather
-    # than fatal if the relation cannot be resolved: the weekly numbers are the
-    # primary sync and should not fail with the detail.
+    # Food log only. journal_entries is owned by personal-dashboard's
+    # journal_sync.py (reflections), and the weekly food numbers — including
+    # meal timing and cooked counts — are now the food_weekly view over the
+    # rows written here, so nothing weekly is computed in this script any more.
     print("Fetching food log entries from Notion...", flush=True)
     food_db = food_log_database_id(required["NOTION_TOKEN"], required["NOTION_JOURNAL_DB_ID"])
-    meals = []
-    if food_db:
-        meals = fetch_food_log_rows(required["NOTION_TOKEN"], food_db, required["KANBAN_USER_ID"])
-        print(f"Fetched {len(meals)} food log entries.", flush=True)
-    else:
-        print("Could not resolve the Food Log database from the journal relation; skipping meals.")
-
-    if meals:
-        overrides = fetch_meal_overrides(
-            required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], required["KANBAN_USER_ID"]
-        )
-        if overrides:
-            print(f"Applying {len(overrides)} dashboard correction(s).", flush=True)
-        timed_weeks = merge_derived(rows, weekly_meal_stats(meals, overrides))
-        print(f"Derived meal timing and cooked counts for {timed_weeks} weeks.", flush=True)
+    if not food_db:
+        sys.exit("Could not resolve the Food Log database from the journal relation.")
+    meals = fetch_food_log_rows(required["NOTION_TOKEN"], food_db, required["KANBAN_USER_ID"])
+    print(f"Fetched {len(meals)} food log entries.", flush=True)
 
     if "--dry-run" in sys.argv:
         print("Dry run complete; Supabase was not changed.")
         return
-
-    synced = upsert_supabase_rows(
-        required["SUPABASE_URL"],
-        required["SUPABASE_SECRET_KEY"],
-        drop_missing_columns(required["SUPABASE_URL"], required["SUPABASE_SECRET_KEY"], "journal_entries", rows),
-    )
-    print(f"Upserted {synced} journal entries into Supabase.")
 
     if not meals:
         return
