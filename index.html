@@ -4277,16 +4277,40 @@
     return { rows, label: `${y} year to date · ${rows.length} weeks` };
   }
 
+  // journal_entries used to carry both the narrative and ~34 weekly metrics.
+  // The metrics were split out into their own per-source tables and are now
+  // read back through the weekly_master view, which deliberately exposes the
+  // same column names (slp_score, slp_hrs, rhr, articles, weekly_weight, …).
+  // Everything below this function still reads one flat row per week, so the
+  // two are merged here rather than threaded through every card and chart.
+  //
+  // weekly_master is the spine: it covers more weeks than journal_entries, and
+  // a week with metrics but no journal page should still plot.
   function fetchJournal() {
     if (_journalData) return Promise.resolve(_journalData);
     if (!_journalFetch) {
-      _journalFetch = supabase
-        .from('journal_entries')
-        .select('*')
-        .order('week', { ascending: true })
-        .then(({ data, error }) => {
-          if (error) throw error;
-          _journalData = (data || []).filter(e => e.week);
+      _journalFetch = Promise.all([
+        supabase.from('weekly_master').select('*').order('week', { ascending: true }),
+        supabase.from('journal_entries').select('*').order('week', { ascending: true }),
+      ])
+        .then(([metrics, journal]) => {
+          if (metrics.error) throw metrics.error;
+          if (journal.error) throw journal.error;
+
+          const byWeek = new Map();
+          for (const row of journal.data || []) {
+            if (row.week) byWeek.set(row.week, { ...row });
+          }
+          // Metrics overlay the journal row, so shared provenance columns
+          // (synced_at, notion_page_id) describe the nightly syncs rather than
+          // the weekly journal run. Narrative survives — weekly_master has no
+          // journal_* columns to collide with.
+          for (const row of metrics.data || []) {
+            if (!row.week) continue;
+            byWeek.set(row.week, { ...(byWeek.get(row.week) || {}), ...row });
+          }
+
+          _journalData = [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
           return _journalData;
         })
         .catch(() => { _journalFetch = null; return null; });
