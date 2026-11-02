@@ -4406,6 +4406,14 @@
   // saying 20% while every count behind it was computed at 25%.
   const NON_PROFILE_PCT = 25;
   const NON_PROFILE_TARGET = 10; // non-profile meals per week — a ceiling, not a goal to reach
+  // Daily macro targets from the Activity System page: a 1914 kcal target
+  // against a ~2300 TDEE, split 30/30/40 protein/fat/carbs.
+  // 144*4 + 64*9 + 191*4 = 1916 kcal, so the split and the total agree.
+  // Protein is a floor to reach; calories, fat and carbs are ceilings.
+  const CALORIE_TARGET = 1914;
+  const PROTEIN_TARGET = 144;
+  const FAT_TARGET     = 64;
+  const CARBS_TARGET   = 191;
   const proteinPct = m => {
     const kcal = Number(m.calories), p = Number(m.protein_g);
     if (!kcal || !Number.isFinite(p)) return null;
@@ -5333,11 +5341,11 @@
 
         <div class="bi-section-heading"><h3>Nutrition &amp; food log</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
         <div class="bi-grid">
-          ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
+          ${chartCard('Calories consumed', `Average intake from the food log · target under ${CALORIE_TARGET}`, 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal', CALORIE_TARGET, null, true)}
           ${chartCard('Energy expenditure', 'Adjusted TDEE (Garmin \u00d7 0.90)', 'adjusted_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
-          ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
-          ${chartCard('Average carbs', 'Daily carbohydrate from logged meals', 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
-          ${chartCard('Average fat', 'Daily fat from logged meals', 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
+          ${chartCard('Average protein', `Daily protein from logged meals · goal ${PROTEIN_TARGET}g`, 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', PROTEIN_TARGET)}
+          ${chartCard('Average carbs', `Daily carbohydrate from logged meals · target under ${CARBS_TARGET}g`, 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', CARBS_TARGET, null, true)}
+          ${chartCard('Average fat', `Daily fat from logged meals · target under ${FAT_TARGET}g`, 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', FAT_TARGET, null, true)}
           ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
           ${chartCard('Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal) · per week${isAgg?', averaged within each period':''} · target under ${NON_PROFILE_TARGET}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', NON_PROFILE_TARGET, 'non-profile', true)}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
