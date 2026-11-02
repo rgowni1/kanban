@@ -4885,6 +4885,7 @@
           stress:     avgOf(rows, 'stress'),    meditation: sumOf(rows, 'meditation'),
           articles:   sumOf(rows, 'articles'),  podcasts:   sumOf(rows, 'podcasts'),
           consumed_cals: avgOf(rows, 'consumed_cals'), garmin_tdee: avgOf(rows, 'garmin_tdee'),
+          adjusted_tdee: avgOf(rows, 'adjusted_tdee'),
           avg_protein: avgOf(rows, 'avg_protein'), calorie_deficit: avgOf(rows, 'calorie_deficit'),
           // A count of meals, so it totals across a period — its neighbours here
           // are daily averages and average instead.
@@ -4996,7 +4997,7 @@
     const latestLearn  = latestWith('articles');
     const latestFood   = latestWith('consumed_cals');
     const latestTiming = latestWith('first_meal_mins');
-    const latestBurn   = latestWith('garmin_tdee');
+    const latestBurn   = latestWith('adjusted_tdee');
     const timeToMinutes = value => {
       const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
       if (!match) return null;
@@ -5024,11 +5025,12 @@
     const sourceByKey = {
       slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
       slp_hrv:'oura.py → Notion', rhr:'oura.py → Notion',
-      intensity_mins:'Garmin computer-use → Notion', weekly_weight:'Garmin computer-use → Notion',
-      strength_mins:'Garmin computer-use → Notion',
-      body_fat:'Garmin computer-use → Notion', stress:'Garmin computer-use → Notion', meditation:'Garmin computer-use → Notion',
-      garmin_tdee:'Garmin computer-use → Notion', consumed_cals:'Notion food log',
-      avg_protein:'Notion food log', calorie_deficit:'Notion formula',
+      intensity_mins:'Garmin MCP → Supabase', weekly_weight:'Garmin MCP → Supabase',
+      strength_mins:'Garmin MCP → Supabase',
+      body_fat:'Garmin MCP → Supabase', stress:'Garmin MCP → Supabase', meditation:'Garmin MCP → Supabase',
+      garmin_tdee:'Garmin MCP → Supabase', adjusted_tdee:'Garmin MCP → Supabase (×0.90)',
+      consumed_cals:'Notion food log',
+      avg_protein:'Notion food log', calorie_deficit:'Adjusted TDEE − intake',
       non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
       cooked_meals:'Notion food log rollup', total_meals:'Notion food log',
       drinks:'Notion food log rollup',
@@ -5261,7 +5263,7 @@
           ${card({label:'Stress', key:'stress', current:latestStress, value:latestStress?fmtInt(latestStress.stress):'—', unit:'/ 100', sub:'Lower is better', color:'var(--viz-mind)', inverse:true})}
           ${card({label:'Weight', key:'weekly_weight', current:latestBody, value:latestBody?fmt1(latestBody.weekly_weight):'—', unit:'lbs', sub:latestBody?.body_fat?`${fmt1(latestBody.body_fat)}% body fat`:'Latest body reading', color:'var(--viz-body)', inverse:true, suffix:' lb'})}
           ${card({label:'Calories consumed', key:'consumed_cals', current:latestFood, value:latestFood?fmtInt(latestFood.consumed_cals):'Not logged', unit:latestFood?'kcal':'', sub:latestFood?`direct from Notion “Consumed Cals”`:'Add nutrition data to your journal', color:'var(--viz-fuel)'})}
-          ${card({label:'Calories expended', key:'garmin_tdee', current:latestBurn, value:latestBurn?fmtInt(latestBurn.garmin_tdee):'Not logged', unit:latestBurn?'kcal':'', sub:latestBurn?.calorie_deficit!=null?`${fmtInt(latestBurn.calorie_deficit)} kcal deficit against intake`:'Garmin total daily energy expenditure', color:'var(--viz-fuel)'})}
+          ${card({label:'Calories expended', key:'adjusted_tdee', current:latestBurn, value:latestBurn?fmtInt(latestBurn.adjusted_tdee):'Not logged', unit:latestBurn?'kcal':'', sub:latestBurn?.calorie_deficit!=null?`${fmtInt(Math.abs(latestBurn.calorie_deficit))} kcal ${latestBurn.calorie_deficit < 0 ? 'surplus' : 'deficit'} against intake`:'Adjusted total daily energy expenditure', color:'var(--viz-fuel)'})}
           ${card({label:'Meal timing', key:'eating_window_hrs', current:latestTiming, value:latestTiming?`${formatClock(latestTiming.first_meal_mins)} → ${formatClock(latestTiming.last_meal_mins)}`:'Not logged', sub:latestTiming?`${fmt1(latestTiming.eating_window_hrs)}-hour window across ${fmtInt(latestTiming.meal_days)} logged days`:'Log meals with a time to derive this', color:'var(--viz-fuel)', inverse:true, comparisonLabel:latestTiming?`Average of the first and last meal on each of the ${fmtInt(latestTiming.meal_days)} days logged that week`:''})}
           ${card({label:'Learning', key:'articles', current:latestLearn, value:latestLearn?fmtInt(latestLearn.articles):'—', unit:'articles', sub:latestLearn?.podcasts!=null?`${latestLearn.podcasts} podcasts & videos`:'Latest logged week', color:'var(--viz-mind)'})}
         </div>
@@ -5320,9 +5322,9 @@
         <div class="bi-section-heading"><h3>Nutrition &amp; food log</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
         <div class="bi-grid">
           ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
-          ${chartCard('Energy expenditure', 'Garmin total daily energy expenditure', 'garmin_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
+          ${chartCard('Energy expenditure', 'Adjusted TDEE (Garmin \u00d7 0.90)', 'adjusted_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
           ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
-          ${chartCard('Calorie deficit', 'Energy expenditure minus intake', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
+          ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
           ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
           ${chartCard(isAgg?'Total drinks':'Drinks', `🍷 Counted from the food log${isAgg?' · total for the period':' · per week'}`, 'drinks', 'var(--viz-fuel)', fmtDrinks, true, 'drinks', null, 'drinks')}
