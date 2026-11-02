@@ -1367,9 +1367,11 @@
   /* A goal line, not a description of the data — longer dashes and full ink so
      it never reads as the median. Only one of the two is ever drawn. */
   .bi-target { stroke: var(--text); stroke-width: 1.25; stroke-dasharray: 7 4; opacity: .55; }
+  .bi-ceiling { stroke: #ef4444; stroke-width: 1.5; stroke-dasharray: 7 4; opacity: .85; }
   .bi-ref-label { font: 8.5px var(--sans); letter-spacing: .02em; }
   .bi-baseline-label { fill: var(--muted); }
   .bi-target-label { fill: var(--text); opacity: .75; font-weight: 600; }
+  .bi-ceiling-label { fill: #ef4444; opacity: .95; font-weight: 600; }
   .bi-chart-coverage { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
   .bi-chart-current small.bi-asof { font-size: 8.5px; letter-spacing: .01em; }
   .bi-bar { opacity: .82; transition: opacity .12s ease; cursor: crosshair; }
@@ -4403,6 +4405,7 @@
   // keeps the explanation and the rule in one place: the page spent months
   // saying 20% while every count behind it was computed at 25%.
   const NON_PROFILE_PCT = 25;
+  const NON_PROFILE_TARGET = 10; // non-profile meals per week — a ceiling, not a goal to reach
   const proteinPct = m => {
     const kcal = Number(m.calories), p = Number(m.protein_g);
     if (!kcal || !Number.isFinite(p)) return null;
@@ -4890,7 +4893,10 @@
           avg_carbs: avgOf(rows, 'avg_carbs'), avg_fat: avgOf(rows, 'avg_fat'),
           // A count of meals, so it totals across a period — its neighbours here
           // are daily averages and average instead.
-          non_profile_meals: sumOf(rows, 'non_profile_meals'),
+          // Averaged, not summed, like strength_mins: the ceiling is per week,
+          // so a rolled-up period must stay on that scale or the line is noise
+          // (a month of good weeks would still total ~40 against a limit of 10).
+          non_profile_meals: avgOf(rows, 'non_profile_meals'),
           dcp_meals: sumOf(rows, 'dcp_meals'),
         };
       });
@@ -4922,7 +4928,7 @@
     // a zero baseline they are a wall of identical bars. Those grow from a
     // zoomed floor instead. The floor is always printed as the bottom axis
     // label, so a truncated baseline is stated rather than hidden.
-    function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
+    function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null, ceiling = false) {
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
@@ -4959,7 +4965,8 @@
           <text class="bi-ref-label ${cls}-label" x="${W-R+6}" y="${ty.toFixed(1)}" text-anchor="start">${escapeHtml(text)}</text>`;
       };
       const reference = target != null
-        ? refLine('bi-target', target, `goal ${valFmt(target)}`)
+        ? refLine(ceiling ? 'bi-ceiling' : 'bi-target', target,
+                  ceiling ? `max ${valFmt(target)}` : `goal ${valFmt(target)}`)
         : points.length < 4 ? '' : refLine('bi-baseline', median, `median ${valFmt(median)}`);
       const bars = points.map(p => {
         const cx = L + (p.i+.5)*slot, vy = y(p.v);
@@ -5087,12 +5094,12 @@
         <div class="bi-summary-source">Source · ${sourceFor(key)}</div>
       </div>`;
 
-    const chartCard = (label, note, key, color, fmt, zeroBase, unit='', target=null, drill=null) => {
+    const chartCard = (label, note, key, color, fmt, zeroBase, unit='', target=null, drill=null, ceiling=false) => {
       const latest = [...periodData].reverse().find(e => e[key] != null);
       const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
       const chartBody = !apiHasField
         ? `<div class="bi-empty-chart">This metric has not been synced yet</div>`
-        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit, target);
+        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit, target, ceiling);
       // State how much of the window was actually logged. A sparse metric and a
       // complete one look identical once the line is drawn, and the headline
       // figure is the last *logged* period, which may be months stale.
@@ -5102,7 +5109,10 @@
       // Against a goal, the count of periods that cleared it says more than any
       // average — 106 and 104 are a near miss twice, not "roughly on target".
       // The goal and median values themselves are now labelled on their lines.
-      const hits = target == null ? null : span.filter(e => e[key] != null && e[key] >= target).length;
+      // A ceiling is cleared by staying BELOW it. Counting >= for those would
+      // report every miss as a hit.
+      const hits = target == null ? null
+        : span.filter(e => e[key] != null && (ceiling ? e[key] < target : e[key] >= target)).length;
       const medianNote = target != null && logged ? ` · hit ${hits} of ${logged}` : '';
       const coverage = !apiHasField || !logged ? ''
         : logged === periodData.length
@@ -5329,7 +5339,7 @@
           ${chartCard('Average carbs', 'Daily carbohydrate from logged meals', 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Average fat', 'Daily fat from logged meals', 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
-          ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
+          ${chartCard('Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal) · per week${isAgg?', averaged within each period':''} · target under ${NON_PROFILE_TARGET}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', NON_PROFILE_TARGET, 'non-profile', true)}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
           ${chartCard(isAgg?'Total drinks':'Drinks', `🍷 Counted from the food log${isAgg?' · total for the period':' · per week'}`, 'drinks', 'var(--viz-fuel)', fmtDrinks, true, 'drinks', null, 'drinks')}
           ${chartCard(isAgg?'Total cooked at home':'Cooked at home', `🏠 Logged with Source = Home${isAgg?' · total for the period':' · per week'}`, 'cooked_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'cooked')}
