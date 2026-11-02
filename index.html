@@ -4887,6 +4887,7 @@
           consumed_cals: avgOf(rows, 'consumed_cals'), garmin_tdee: avgOf(rows, 'garmin_tdee'),
           adjusted_tdee: avgOf(rows, 'adjusted_tdee'),
           avg_protein: avgOf(rows, 'avg_protein'), calorie_deficit: avgOf(rows, 'calorie_deficit'),
+          avg_carbs: avgOf(rows, 'avg_carbs'), avg_fat: avgOf(rows, 'avg_fat'),
           // A count of meals, so it totals across a period — its neighbours here
           // are daily averages and average instead.
           non_profile_meals: sumOf(rows, 'non_profile_meals'),
@@ -5030,7 +5031,8 @@
       body_fat:'Garmin MCP → Supabase', stress:'Garmin MCP → Supabase', meditation:'Garmin MCP → Supabase',
       garmin_tdee:'Garmin MCP → Supabase', adjusted_tdee:'Garmin MCP → Supabase (×0.90)',
       consumed_cals:'Notion food log',
-      avg_protein:'Notion food log', calorie_deficit:'Adjusted TDEE − intake',
+      avg_protein:'Notion food log', avg_carbs:'Notion food log', avg_fat:'Notion food log',
+      calorie_deficit:'Adjusted TDEE − intake',
       non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
       cooked_meals:'Notion food log rollup', total_meals:'Notion food log',
       drinks:'Notion food log rollup',
@@ -5324,6 +5326,8 @@
           ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
           ${chartCard('Energy expenditure', 'Adjusted TDEE (Garmin \u00d7 0.90)', 'adjusted_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
           ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
+          ${chartCard('Average carbs', 'Daily carbohydrate from logged meals', 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
+          ${chartCard('Average fat', 'Daily fat from logged meals', 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams')}
           ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
           ${chartCard(isAgg?'Total non-profile meals':'Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal)${isAgg?' · total for the period':' · per week'}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'non-profile')}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
