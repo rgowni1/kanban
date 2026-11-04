@@ -4851,9 +4851,6 @@
 
     const avgOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
     const sumOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? v.reduce((a,b) => a+b, 0) : null; };
-    // For a best-so-far figure in a rolled-up period, averaging would hide the
-    // best session behind the mediocre ones.
-    const minOf = (arr, key) => { const v = arr.map(e => e[key]).filter(v => v != null); return v.length ? Math.min(...v) : null; };
     const fmtInt = v => v == null ? '—' : Math.round(v).toString();
     const fmt1   = v => v == null ? '—' : (+v).toFixed(1);
     const parseLocalDate = value => new Date(`${value}T00:00:00`);
@@ -4916,10 +4913,7 @@
           adjusted_tdee: avgOf(rows, 'adjusted_tdee'),
           avg_protein: avgOf(rows, 'avg_protein'), calorie_deficit: avgOf(rows, 'calorie_deficit'),
           avg_carbs: avgOf(rows, 'avg_carbs'), avg_fat: avgOf(rows, 'avg_fat'),
-          breathwork_sessions: sumOf(rows, 'breathwork_sessions'),
-          meditation_only_sessions: sumOf(rows, 'meditation_only_sessions'),
-          mins_under_8: sumOf(rows, 'mins_under_8'), mins_under_6: sumOf(rows, 'mins_under_6'),
-          best_settled_rate: minOf(rows, 'best_settled_rate'),
+          breath_sessions: sumOf(rows, 'breath_sessions'),
           avg_settled_rate: avgOf(rows, 'avg_settled_rate'),
           // A count of meals, so it totals across a period — its neighbours here
           // are daily averages and average instead.
@@ -5071,9 +5065,8 @@
       garmin_tdee:'Garmin MCP → Supabase', adjusted_tdee:'Garmin MCP → Supabase (×0.90)',
       consumed_cals:'Notion food log',
       avg_protein:'Notion food log', avg_carbs:'Notion food log', avg_fat:'Notion food log',
-      breathwork_sessions:'Garmin MCP → Supabase', meditation_only_sessions:'Garmin MCP → Supabase',
-      mins_under_8:'Garmin per-second session samples', mins_under_6:'Garmin per-second session samples',
-      best_settled_rate:'Garmin per-second session samples', avg_settled_rate:'Garmin per-second session samples',
+      breath_sessions:'Garmin MCP → Supabase',
+      avg_settled_rate:'Garmin per-second session samples',
       calorie_deficit:'Adjusted TDEE − intake',
       non_profile_meals:'Notion food log rollup', dcp_meals:'Notion food log rollup',
       cooked_meals:'Notion food log rollup', total_meals:'Notion food log',
@@ -5359,6 +5352,8 @@
           ${chartCard('Resting heart rate', 'Lower can indicate better recovery', 'rhr', 'var(--viz-sleep)', v=>Math.round(v), false, 'bpm', RHR_TARGET, null, true)}
           ${chartCard('Waking respiration', 'Garmin all-day average while awake', 'resp_waking_avg', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'brpm', null, null, true)}
           ${chartCard('Sleep respiration', 'Oura overnight average', 'breath_rate', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'brpm', null, null, true)}
+          ${chartCard(`${isAgg?'Total breath sessions':'Breath sessions'}`, `Breathwork and meditation${isAgg?' · total for the period':' · per week'}`, 'breath_sessions', 'var(--viz-sleep)', v=>Math.round(v), true, 'sessions')}
+          ${chartCard('Session respiration', `Average rate held during sessions, after the first minute · target ${BREATH_TARGET_BRPM}`, 'avg_settled_rate', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'brpm', BREATH_TARGET_BRPM, null, true)}
         </div>
 
         <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
@@ -5389,15 +5384,6 @@
           ${chartCard('Last meal', '🌙 Average time the last meal of the day was eaten', 'last_meal_mins', 'var(--viz-fuel)', formatClock, false, '', null, 'timing')}
           ${chartCard('Eating window', 'Hours between the first and last meal', 'eating_window_hrs', 'var(--viz-fuel)', v=>(+v).toFixed(1), false, 'hours', null, 'timing')}
           ${chartCard(isAgg?'Total meals logged':'Meals logged', `Rows in the food log${isAgg?' · total for the period':' · per week'}`, 'total_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'timing')}
-        </div>
-
-        <div class="bi-section-heading"><h3>Breathwork &amp; meditation</h3><p>${periodLbl} · respiration measured per second during sessions</p></div>
-        <div class="bi-grid">
-          ${chartCard(`${isAgg?'Total breathwork':'Breathwork'}`, `Sessions that actually slow the breath${isAgg?' · total for the period':' · per week'}`, 'breathwork_sessions', 'var(--viz-mind)', v=>Math.round(v), true, 'sessions')}
-          ${chartCard(`${isAgg?'Total meditation':'Meditation'}`, `Seated sessions, excluding breathwork${isAgg?' · total for the period':' · per week'}`, 'meditation_only_sessions', 'var(--viz-mind)', v=>Math.round(v), true, 'sessions')}
-          ${chartCard('Time under 8 brpm', `Minutes spent at or below 8 breaths/min${isAgg?' · total for the period':' · per week'}`, 'mins_under_8', 'var(--viz-mind)', v=>(+v).toFixed(1), true, 'minutes')}
-          ${chartCard('Time under 6 brpm', `Minutes at or below 6 breaths/min${isAgg?' · total for the period':' · per week'}`, 'mins_under_6', 'var(--viz-mind)', v=>(+v).toFixed(1), true, 'minutes')}
-          ${chartCard('Best settled rate', `Lowest rate held after the first minute · target ${BREATH_TARGET_BRPM}`, 'best_settled_rate', 'var(--viz-mind)', v=>(+v).toFixed(1), false, 'brpm', BREATH_TARGET_BRPM, null, true)}
         </div>
 
         <div class="bi-section-heading"><h3>Mind &amp; learning</h3><p>${periodLbl} · ${isAgg?'totals where relevant':'weekly readings'}</p></div>
