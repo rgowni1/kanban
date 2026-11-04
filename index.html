@@ -4901,6 +4901,7 @@
           _label: map[k]._label,
           slp_score: avgOf(rows, 'slp_score'), slp_hrs: avgOf(rows, 'slp_hrs'),
           slp_hrv:   avgOf(rows, 'slp_hrv'),   rhr:      avgOf(rows, 'rhr'),
+          resp_waking_avg: avgOf(rows, 'resp_waking_avg'), breath_rate: avgOf(rows, 'breath_rate'),
           training_hrs:   sumOf(rows, 'training_hrs'),
           intensity_mins: sumOf(rows, 'intensity_mins'),
           // Averaged, not summed, unlike its neighbours: the 120-minute goal is
@@ -4957,7 +4958,7 @@
     // a zero baseline they are a wall of identical bars. Those grow from a
     // zoomed floor instead. The floor is always printed as the bottom axis
     // label, so a truncated baseline is stated rather than hidden.
-    function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null, ceiling = false) {
+    function makeBarChart(data, key, color, valFmt, zeroBase = false, unit = '', target = null) {
       data = trimEmptyEdges(data, key);
       const points = data.map((e, i) => ({ v: e[key], i, label: getLabel(e) })).filter(p => p.v != null);
       if (!points.length) return `<div class="bi-empty-chart">No data for this period yet</div>`;
@@ -4993,8 +4994,8 @@
         return `<line class="${cls}" x1="${L}" y1="${ry.toFixed(1)}" x2="${W-R}" y2="${ry.toFixed(1)}"></line>
           <text class="bi-ref-label ${cls}-label" x="${W-R+6}" y="${ty.toFixed(1)}" text-anchor="start">${escapeHtml(text)}</text>`;
       };
-      // `ceiling` still decides which side of the line counts as a hit; it no
-      // longer changes how the line looks or what it is called.
+      // Floors and ceilings draw identically. Which direction clears the line
+      // is chartCard's business (it counts the hits); here a target is a target.
       const reference = target != null
         ? refLine('bi-target', target, `target ${valFmt(target)}`)
         : points.length < 4 ? '' : refLine('bi-baseline', median, `median ${valFmt(median)}`);
@@ -5063,6 +5064,7 @@
     const sourceByKey = {
       slp_score:'oura.py → Notion', slp_hrs:'oura.py → Notion', avg_sleep_time:'oura.py → Notion',
       slp_hrv:'oura.py → Notion', rhr:'oura.py → Notion',
+      resp_waking_avg:'Garmin MCP → Supabase', breath_rate:'Oura → Supabase',
       intensity_mins:'Garmin MCP → Supabase', weekly_weight:'Garmin MCP → Supabase',
       strength_mins:'Garmin MCP → Supabase',
       body_fat:'Garmin MCP → Supabase', stress:'Garmin MCP → Supabase', meditation:'Garmin MCP → Supabase',
@@ -5132,18 +5134,19 @@
       const apiHasField = entries.some(e => Object.prototype.hasOwnProperty.call(e, key));
       const chartBody = !apiHasField
         ? `<div class="bi-empty-chart">This metric has not been synced yet</div>`
-        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit, target, ceiling);
+        : makeTrendChart(periodData, key, color, fmt, zeroBase, unit, target);
       // State how much of the window was actually logged. A sparse metric and a
       // complete one look identical once the line is drawn, and the headline
       // figure is the last *logged* period, which may be months stale.
       const span = trimEmptyEdges(periodData, key);
       const logged = span.filter(e => e[key] != null).length;
       const unitWord = _biPeriod === 'week' ? 'week' : _biPeriod === 'month' ? 'month' : 'quarter';
-      // Against a goal, the count of periods that cleared it says more than any
-      // average — 106 and 104 are a near miss twice, not "roughly on target".
-      // The goal and median values themselves are now labelled on their lines.
+      // Against a target, the count of periods that cleared it says more than
+      // any average — 106 and 104 are a near miss twice, not "roughly on target".
+      // The target and median values themselves are labelled on their lines.
       // A ceiling is cleared by staying BELOW it. Counting >= for those would
-      // report every miss as a hit.
+      // report every miss as a hit. This is the only thing `ceiling` still does:
+      // the line itself looks the same either way.
       const hits = target == null ? null
         : span.filter(e => e[key] != null && (ceiling ? e[key] < target : e[key] >= target)).length;
       const medianNote = target != null && logged ? ` · hit ${hits} of ${logged}` : '';
@@ -5354,25 +5357,27 @@
           ${chartCard('Sleep duration', 'Average hours per night', 'slp_hrs', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'hours', SLEEP_HRS_TARGET)}
           ${chartCard('Heart-rate variability', 'Higher generally signals recovery', 'slp_hrv', 'var(--viz-sleep)', v=>Math.round(v), false, 'ms', HRV_TARGET)}
           ${chartCard('Resting heart rate', 'Lower can indicate better recovery', 'rhr', 'var(--viz-sleep)', v=>Math.round(v), false, 'bpm', RHR_TARGET, null, true)}
+          ${chartCard('Waking respiration', 'Garmin all-day average while awake', 'resp_waking_avg', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'brpm', null, null, true)}
+          ${chartCard('Sleep respiration', 'Oura overnight average', 'breath_rate', 'var(--viz-sleep)', v=>(+v).toFixed(1), false, 'brpm', null, null, true)}
         </div>
 
         <div class="bi-section-heading"><h3>Training &amp; body</h3><p>${periodLbl} · ${isAgg?'totals':'weekly readings'}</p></div>
         <div class="bi-grid">
           ${chartCard(`${isAgg?'Total intensity':'Intensity'}`, 'Moderate and vigorous minutes', 'intensity_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes')}
-          ${chartCard('Strength training', `Minutes per week${isAgg?', averaged within each period':''} · goal ${STRENGTH_TARGET}`, 'strength_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes', STRENGTH_TARGET)}
+          ${chartCard('Strength training', `Minutes per week${isAgg?', averaged within each period':''}`, 'strength_mins', 'var(--viz-body)', v=>Math.round(v), true, 'minutes', STRENGTH_TARGET)}
           ${chartCard('Weight', 'Long-term direction matters most', 'weekly_weight', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'lbs')}
-          ${chartCard('Body fat', 'Composition trend', 'body_fat', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'percent')}
+          ${chartCard('Body fat', 'Composition trend', 'body_fat', 'var(--viz-body)', v=>(+v).toFixed(1), false, 'percent', BODY_FAT_TARGET, null, true)}
         </div>
 
         <div class="bi-section-heading"><h3>Nutrition &amp; food log</h3><p>${periodLbl} · averages for rolled-up periods</p></div>
         <div class="bi-grid">
-          ${chartCard('Calories consumed', `Average intake from the food log · target under ${CALORIE_TARGET}`, 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal', CALORIE_TARGET, null, true)}
+          ${chartCard('Calories consumed', 'Average intake from the food log', 'consumed_cals', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal', CALORIE_TARGET, null, true)}
           ${chartCard('Energy expenditure', 'Adjusted TDEE (Garmin \u00d7 0.90)', 'adjusted_tdee', 'var(--viz-fuel)', v=>Math.round(v), false, 'kcal')}
-          ${chartCard('Average protein', `Daily protein from logged meals · goal ${PROTEIN_TARGET}g`, 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', PROTEIN_TARGET)}
-          ${chartCard('Average carbs', `Daily carbohydrate from logged meals · target under ${CARBS_TARGET}g`, 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', CARBS_TARGET, null, true)}
-          ${chartCard('Average fat', `Daily fat from logged meals · target under ${FAT_TARGET}g`, 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', FAT_TARGET, null, true)}
-          ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal')}
-          ${chartCard('Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal) · per week${isAgg?', averaged within each period':''} · target under ${NON_PROFILE_TARGET}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', NON_PROFILE_TARGET, 'non-profile', true)}
+          ${chartCard('Average protein', 'Daily protein from logged meals', 'avg_protein', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', PROTEIN_TARGET)}
+          ${chartCard('Average carbs', 'Daily carbohydrate from logged meals', 'avg_carbs', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', CARBS_TARGET, null, true)}
+          ${chartCard('Average fat', 'Daily fat from logged meals', 'avg_fat', 'var(--viz-fuel)', v=>Math.round(v), true, 'grams', FAT_TARGET, null, true)}
+          ${chartCard('Calorie deficit', 'Adjusted TDEE minus intake; negative is a surplus', 'calorie_deficit', 'var(--viz-fuel)', v=>Math.round(v), true, 'kcal', DEFICIT_TARGET)}
+          ${chartCard('Non-profile meals', `🍔 Under ${NON_PROFILE_PCT}% of calories from protein (≥200 kcal) · per week${isAgg?', averaged within each period':''}`, 'non_profile_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', NON_PROFILE_TARGET, 'non-profile', true)}
           ${chartCard(isAgg?'Total desserts & pastries':'Desserts & pastries', `🍪 Cookies, cake, croissants, brownies${isAgg?' · total for the period':' · per week'}`, 'dcp_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'items', null, 'dcp')}
           ${chartCard(isAgg?'Total drinks':'Drinks', `🍷 Counted from the food log${isAgg?' · total for the period':' · per week'}`, 'drinks', 'var(--viz-fuel)', fmtDrinks, true, 'drinks', null, 'drinks')}
           ${chartCard(isAgg?'Total cooked at home':'Cooked at home', `🏠 Logged with Source = Home${isAgg?' · total for the period':' · per week'}`, 'cooked_meals', 'var(--viz-fuel)', v=>Math.round(v), true, 'meals', null, 'cooked')}
